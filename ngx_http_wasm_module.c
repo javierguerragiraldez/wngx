@@ -253,34 +253,6 @@ static wasmer_instance_t *get_or_create_wasm_instance(ngx_http_request_t *r) {
         r_log_debug("no module");
         wasmer_module_t *module;
 
-//         {
-//             struct stat fstat;
-//             int rc = ngx_file_info(wlcf->wasm_path.data, &fstat);
-//             if (rc != 0) {
-//                 r_log_debug("can't stat wasm file: %s", strerror(errno));
-//                 return NULL;
-//             }
-//
-//             wlcf->module_bytes_len = fstat.st_size;
-//             wlcf->module_bytes = ngx_pcalloc(r->pool, wlcf->module_bytes_len);
-//             if (wlcf->module_bytes == NULL) return NULL;
-//
-//             int fd = ngx_open_file(wlcf->wasm_path.data, NGX_FILE_RDONLY, 0, 4);
-//             if (fd < 0) {
-//                 r_log_debug("can't open wasm file: %s", strerror(errno));
-//                 return NULL;
-//             }
-//
-//             rc = pread(fd, wlcf->module_bytes, wlcf->module_bytes_len, 0);
-//             if (rc != 0) {
-//                 r_log_debug("can't read wasm file: %s", strerror(errno));
-//                 return NULL;
-//             }
-//
-//             close(fd);
-//             r_log_debug("bytes: %p:%d", wlcf->module_bytes, wlcf->module_bytes_len);
-//         }
-
         wlcf->module_bytes = read_file(r->pool, (char*)wlcf->wasm_path.data, &wlcf->module_bytes_len);
         r_log_debug("read file: %p(%d)", wlcf->module_bytes, wlcf->module_bytes_len);
 
