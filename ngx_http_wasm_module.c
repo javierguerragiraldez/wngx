@@ -101,16 +101,11 @@ static void wngx_add_header (
     ngx_http_request_t *r = wasmer_instance_context_data_get(wctx);
     if (!r) return;
 
-    r_log_debug("wngx_add_header: %d,%d %d,%d", key_off, key_len, val_off, val_len);
-
     const wasmer_memory_t *mem = wasmer_instance_context_memory(wctx, 0);
     if (!mem) return;
 
     uint8_t *mem_buf = wasmer_memory_data(mem);
     if (!mem_buf) return;
-
-    r_log_debug("key: %10s", mem_buf+key_off);
-    r_log_debug("val: %10s", mem_buf+val_off);
 
     ngx_table_elt_t *h = ngx_list_push(&r->headers_out.headers);
     if (!h) return;
@@ -120,6 +115,7 @@ static void wngx_add_header (
     h->key.len = key_len;
     h->value.data = mem_buf + val_off;
     h->value.len = val_len;
+    r_log_debug("wngx_add_header %V / %V", &h->key, &h->value);
 }
 
 typedef void (*func_t)(void *);
@@ -231,11 +227,11 @@ static char *ngx_http_wasm_merge_loc_conf(ngx_conf_t *cf, void *parent, void *ch
     ngx_http_wasm_loc_conf_t *prev = parent;
     ngx_http_wasm_loc_conf_t *conf = child;
 
-    ngx_log_stderr(0, "prev wasm file: '%*s'", prev->wasm_path.len, prev->wasm_path.data);
-    ngx_log_stderr(0, "conf wasm file: '%*s'", conf->wasm_path.len, conf->wasm_path.data);
+    ngx_log_stderr(0, "prev wasm file: '%V'", &prev->wasm_path);
+    ngx_log_stderr(0, "conf wasm file: '%V'", &conf->wasm_path);
 
     ngx_conf_merge_str_value(conf->wasm_path, prev->wasm_path, "");
-    ngx_log_stderr(0, "mrgd wasm file: '%*s'", conf->wasm_path.len, conf->wasm_path.data);
+    ngx_log_stderr(0, "mrgd wasm file: '%V'", &conf->wasm_path);
 
     return NGX_CONF_OK;
 }
@@ -243,50 +239,49 @@ static char *ngx_http_wasm_merge_loc_conf(ngx_conf_t *cf, void *parent, void *ch
 
 
 static wasmer_instance_t *get_or_create_wasm_instance(ngx_http_request_t *r) {
-    r_log_debug("get_or_create_wasm_instance");
+//     r_log_debug("get_or_create_wasm_instance");
     ngx_http_wasm_loc_conf_t *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
     if (wlcf->wasm_path.data == NULL) return NULL;
 
 //     r_log_debug("no instance");
 
     if (wlcf->wasm_module == NULL) {
-        r_log_debug("no module");
+//         r_log_debug("no module");
         wasmer_module_t *module;
 
         wlcf->module_bytes = read_file(r->pool, (char*)wlcf->wasm_path.data, &wlcf->module_bytes_len);
-        r_log_debug("read file: %p(%d)", wlcf->module_bytes, wlcf->module_bytes_len);
+//         r_log_debug("read file: %p(%d)", wlcf->module_bytes, wlcf->module_bytes_len);
 
         wasmer_result_t compile_result = wasmer_compile(&module, wlcf->module_bytes, wlcf->module_bytes_len);
         if (compile_result != WASMER_OK) {
             const char *errstr = dup_wasmer_error();
-            r_log_debug("Error loading WASM '%*s': \"%s\"",
-                        wlcf->wasm_path.len, wlcf->wasm_path.data, errstr);
+//             r_log_debug("Error loading WASM '%V': \"%s\"", &wlcf->wasm_path, errstr);
             free((void *)errstr);
             return NULL;
         }
-        r_log_debug("compile_result: %d", compile_result);
+//         r_log_debug("compile_result: %d", compile_result);
         wlcf->wasm_module = module;
     }
 
     ngx_http_wasm_ctx *ctx = ngx_http_get_module_ctx(r, ngx_http_wasm_module);
-    r_log_debug("got ctx: %p", ctx);
+//     r_log_debug("got ctx: %p", ctx);
     if (ctx == NULL) {
-        r_log_debug("no context");
+//         r_log_debug("no context");
         ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_wasm_ctx));
         if (ctx == NULL) {
-            r_log_debug("can't allocate ngx_http_wasm_ctx");
+//             r_log_debug("can't allocate ngx_http_wasm_ctx");
             return NULL;
         }
 
-        r_log_debug("new ctx: %p", ctx);
+//         r_log_debug("new ctx: %p", ctx);
         wasmer_instance_t *instance;
 
         init_imports();
-        r_log_debug("init_imports done");
+//         r_log_debug("init_imports done");
 
         wasmer_result_t instantiate_result = wasmer_module_instantiate(
             wlcf->wasm_module, &instance, imports, sizeof_array(imports));
-        r_log_debug("instantiate_result: %d: %p", instantiate_result, instance);
+//         r_log_debug("instantiate_result: %d: %p", instantiate_result, instance);
         if (instantiate_result != WASMER_OK) {
             r_log_debug("Error instantiating WASM module");
             return NULL;
@@ -295,10 +290,10 @@ static wasmer_instance_t *get_or_create_wasm_instance(ngx_http_request_t *r) {
         ctx->instance = instance;
         wasmer_instance_context_data_set(instance, r);
         ngx_http_set_ctx(r, ctx, ngx_http_wasm_module);
-        r_log_debug("set ctx");
+//         r_log_debug("set ctx");
     }
 
-    r_log_debug("got ctx: %p, instance: %p", ctx, ctx->instance);
+//     r_log_debug("got ctx: %p, instance: %p", ctx, ctx->instance);
     return ctx->instance;
 }
 
@@ -306,7 +301,7 @@ static wasmer_instance_t *get_or_create_wasm_instance(ngx_http_request_t *r) {
 static wasmer_result_t maybe_call(ngx_http_request_t *r, const char *method) {
     r_log_debug("maybe call r:%p  method:'%s'", r, method);
     wasmer_instance_t *instance = get_or_create_wasm_instance(r);
-    r_log_debug("got instance %p", instance);
+//     r_log_debug("got instance %p", instance);
     if (instance == NULL) return WASMER_OK;
 
     wasmer_value_t params[] = {};
@@ -320,12 +315,80 @@ static wasmer_result_t maybe_call(ngx_http_request_t *r, const char *method) {
     return rc;
 }
 
+void is_in_buf(
+    ngx_http_request_t *r,
+    const char *name,
+    const ngx_buf_t *buf,
+    ngx_str_t str
+) {
+    r_log_debug("%s %s",
+        (str.data >= buf->start && str.data + str.len <= buf->end) ?
+            "[ in  ]" : "[ out ]", name);
+
+    if (str.data >= buf->start && str.data + str.len <= buf->end) {
+        r_log_debug("[ in  ] %s : '%V' (%d-%d)",
+                    name, &str, str.data - buf->start,
+                    str.data + str.len - buf->start);
+    } else {
+        r_log_debug("[ out ] %s : '%V' (%p-%p)",
+                    name, &str, str.data, str.data + str.len);
+    }
+}
+
+void dump_str_list(ngx_http_request_t *r, const ngx_list_t *list, const ngx_buf_t *buf) {
+    r_log_debug("    .size: %d, nalloc: %d", list->size, list->nalloc);
+    r_log_debug("    (sizeof(ngx_str_t) : %d, sizeof(ngx_table_elt_t): %d)",
+                sizeof(ngx_str_t), sizeof(ngx_table_elt_t));
+    const ngx_list_part_t *part = &list->part;
+    ngx_table_elt_t *arr = (ngx_table_elt_t *)part->elts;
+    ngx_uint_t i;
+    for (i = 0; ; i++) {
+        if (i >= part->nelts) {
+            if (part->next == NULL) break;
+
+            part = part->next;
+            arr = (ngx_table_elt_t *)part->elts;
+            i = 0;
+        }
+
+        ngx_table_elt_t *e = &arr[i];
+        ngx_str_t lwk = { .len = e->key.len, .data = e->lowcase_key };
+//         r_log_debug("-- hash: %ui, key.len: %uz, key.data: %p, lowcase: %p, value.len: %uz, value.data: %p",
+//             e->hash, e->key.len, e->key.data, e->lowcase_key, e->value.len, e->value.data);
+        r_log_debug("-- hash: %ui, key: '%V', lowcase_key: '%V', value: '%V'",
+                    e->hash, &e->key, &lwk, &e->value);
+        is_in_buf(r, "e->key", buf, e->key);
+        is_in_buf(r, "lowcase_key", buf, lwk);
+        is_in_buf(r, "e->value", buf, e->value);
+    }
+}
+
+void dump_request(ngx_http_request_t *r) {
+    r_log_debug("--- request ---");
+
+#define rv(vn) r_log_debug(#vn "'%V'", &(vn))
+
+    rv(r->request_line);
+    rv(r->uri);
+    rv(r->args);
+    rv(r->exten);
+    rv(r->unparsed_uri);
+
+    r_log_debug("r->header_in: "); dump_str_list(r, &r->headers_in.headers, r->header_in);
+    r_log_debug("r->header_out: "); dump_str_list(r, &r->headers_out.headers, r->header_in);
+
+#undef rv
+
+    r_log_debug("---------------");
+}
+
 
 
 ngx_int_t ngx_http_wasm_rewrite_handler ( ngx_http_request_t* r ) {
     r_log_debug("rewrite handler");
+    dump_request(r);
     ngx_http_wasm_loc_conf_t  *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
-    r_log_debug("wasm file: '%*s'", wlcf->wasm_path.len, wlcf->wasm_path.data);
+    r_log_debug("wasm file: '%V'", &wlcf->wasm_path);
 
     wasmer_result_t call_result = maybe_call(r, "rewrite");
     if (call_result != WASMER_OK) {
@@ -339,7 +402,7 @@ ngx_int_t ngx_http_wasm_rewrite_handler ( ngx_http_request_t* r ) {
 ngx_int_t ngx_http_wasm_access_handler ( ngx_http_request_t* r ) {
     r_log_debug("access handler");
     ngx_http_wasm_loc_conf_t  *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
-    r_log_debug("wasm file: '%*s'", wlcf->wasm_path.len, wlcf->wasm_path.data);
+    r_log_debug("wasm file: '%V'", &wlcf->wasm_path);
 
     wasmer_result_t call_result = maybe_call(r, "access");
     if (call_result != WASMER_OK) {
@@ -353,7 +416,7 @@ ngx_int_t ngx_http_wasm_access_handler ( ngx_http_request_t* r ) {
 ngx_int_t ngx_http_wasm_content_hanlder ( ngx_http_request_t* r ) {
     r_log_debug("content handler");
     ngx_http_wasm_loc_conf_t  *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
-    r_log_debug("wasm file: '%*s'", wlcf->wasm_path.len, wlcf->wasm_path.data);
+    r_log_debug("wasm file: '%V'", &wlcf->wasm_path);
 
     wasmer_result_t call_result = maybe_call(r, "content");
     if (call_result != WASMER_OK) {
@@ -367,7 +430,7 @@ ngx_int_t ngx_http_wasm_content_hanlder ( ngx_http_request_t* r ) {
 ngx_int_t ngx_http_wasm_log_handler ( ngx_http_request_t* r ) {
     r_log_debug("log handler");
     ngx_http_wasm_loc_conf_t  *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
-    r_log_debug("wasm file: '%*s'", wlcf->wasm_path.len, wlcf->wasm_path.data);
+    r_log_debug("wasm file: '%V'", &wlcf->wasm_path);
 
     wasmer_result_t call_result = maybe_call(r, "do_log");
     if (call_result != WASMER_OK) {
@@ -402,7 +465,7 @@ static ngx_http_output_header_filter_pt ngx_http_next_header_filter;
 static ngx_int_t ngx_http_wasm_header_filter(ngx_http_request_t *r) {
     r_log_debug("header filter");
     ngx_http_wasm_loc_conf_t  *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
-    r_log_debug("wasm file: '%*s'", wlcf->wasm_path.len, wlcf->wasm_path.data);
+    r_log_debug("wasm file: '%V'", &wlcf->wasm_path);
 
     wasmer_result_t call_result = maybe_call(r, "header_filter");
     if (call_result != WASMER_OK) {
@@ -419,7 +482,7 @@ static ngx_http_output_body_filter_pt ngx_http_next_body_filter;
 static ngx_int_t ngx_http_wasm_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
     r_log_debug("body filter");
     ngx_http_wasm_loc_conf_t *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
-    r_log_debug("wasm file: '%*s'", wlcf->wasm_path.len, wlcf->wasm_path.data);
+    r_log_debug("wasm file: '%V'", &wlcf->wasm_path);
 
     wasmer_result_t call_result = maybe_call(r, "body_filter");
     if (call_result != WASMER_OK) {
@@ -440,7 +503,7 @@ static ngx_int_t ngx_http_wasm_postconf ( ngx_conf_t* cf ) {
     }
 
     ngx_log_stderr(0, "postconf (stderr)");
-    ngx_log_stderr(0, "(%d) wasm file: '%*s'", getpid(), wlcf->wasm_path.len, wlcf->wasm_path.data);
+    ngx_log_stderr(0, "(%d) wasm file: '%V'", getpid(), &wlcf->wasm_path);
 
     ngx_http_core_main_conf_t *cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
 
