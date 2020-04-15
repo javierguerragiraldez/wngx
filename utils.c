@@ -3,7 +3,7 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 
-#include "wngx_data.h"
+#include "wngx_structs.h"
 #include "utils.h"
 
 ngx_uint_t count_ngx_list(const ngx_list_t *list) {
