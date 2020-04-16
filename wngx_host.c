@@ -9,14 +9,36 @@
 #include "wngx_host.h"
 #include "utils.h"
 
-uint32_t wngx_request_size ( const wasmer_instance_context_t* wctx ) {
+
+static void wngx_log(
+    const wasmer_instance_context_t* wctx,
+    uint32_t level,
+    uint32_t msg, uint32_t msg_len
+) {
+    const ngx_http_request_t *r = wasmer_instance_context_data_get(wctx);
+    if (!r) return;
+
+    ngx_http_wasm_loc_conf_t *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
+
+    const wasmer_memory_t *mem_ctx = wasmer_instance_context_memory(wctx, 0);
+    if (!mem_ctx) return;
+
+    uint8_t *mem = wasmer_memory_data(mem_ctx);
+    if (!mem) return;
+
+    ngx_str_t msg_str = { .len = msg_len, .data = mem + msg };
+
+    ngx_log_debug(level, r->connection->log, 0, "module %V: '%V'", &wlcf->wasm_path, &msg_str);
+}
+
+static uint32_t wngx_request_size ( const wasmer_instance_context_t* wctx ) {
     const ngx_http_request_t *r = wasmer_instance_context_data_get(wctx);
     if (!r) return 0;
 
     return request_size(r);
 }
 
-void wngx_get_request (
+static void wngx_get_request (
     const wasmer_instance_context_t* wctx,
     uint32_t buff_off, uint32_t buff_size
 ) {
@@ -35,7 +57,7 @@ void wngx_get_request (
 
 
 
-const char *dup_wasmer_error() {
+static const char *dup_wasmer_error() {
     int error_len = wasmer_last_error_length();
     char *error_str = calloc(error_len, 1);
     wasmer_last_error_message(error_str, error_len);
@@ -97,6 +119,30 @@ typedef struct {
 } func_defs_t;
 
 func_defs_t func_defs[] = {
+    {
+        .func_name = LIT_BYTEARRAY("wngx_log"),
+        .func = (func_t) wngx_log,
+        .n_returns = 0,
+        .returns = {},
+        .n_params = 3,
+        .params = { WASM_I32, WASM_I32, WASM_I32 },
+    },
+    {
+        .func_name = LIT_BYTEARRAY("wngx_request_size"),
+        .func = (func_t) wngx_request_size,
+        .n_returns = 1,
+        .returns = { WASM_I32 },
+        .n_params = 0,
+        .params =  {},
+    },
+    {
+        .func_name = LIT_BYTEARRAY("wngx_get_request"),
+        .func = (func_t)wngx_get_request,
+        .n_returns = 0,
+        .returns = {},
+        .n_params = 2,
+        .params = { WASM_I32, WASM_I32 },
+    },
     {
         .func_name = LIT_BYTEARRAY("wngx_get_uri"),
         .func = (func_t) wngx_get_uri,
@@ -181,7 +227,7 @@ static wasmer_instance_t *get_or_create_wasm_instance(ngx_http_request_t *r) {
 
         wasmer_result_t instantiate_result = wasmer_module_instantiate(
             wlcf->wasm_module, &instance, imports, sizeof_array(imports));
-//         r_log_debug("instantiate_result: %d: %p", instantiate_result, instance);
+        r_log_debug("instantiate_result: %d: %p", instantiate_result, instance);
         if (instantiate_result != WASMER_OK) {
             r_log_debug("Error instantiating WASM module");
             return NULL;
@@ -199,7 +245,7 @@ static wasmer_instance_t *get_or_create_wasm_instance(ngx_http_request_t *r) {
 
 
 wasmer_result_t maybe_call(ngx_http_request_t *r, const char *method) {
-    r_log_debug("maybe call r:%p  method:'%s'", r, method);
+//     r_log_debug("maybe call r:%p  method:'%s'", r, method);
     wasmer_instance_t *instance = get_or_create_wasm_instance(r);
 //     r_log_debug("got instance %p", instance);
     if (instance == NULL) return WASMER_OK;
@@ -210,7 +256,7 @@ wasmer_result_t maybe_call(ngx_http_request_t *r, const char *method) {
     wasmer_result_t rc = wasmer_instance_call(instance, method,
                                 params, sizeof_array(params),
                                 results, sizeof_array(results));
-    r_log_debug("rc: %d", rc);
+//     r_log_debug("rc: %d", rc);
 
     return rc;
 }

@@ -43,7 +43,7 @@ $(NGX_INST): $(NGX_EXE)
 
 
 
-modules: demo_c.wasm
+modules: demo_c.wasm demo_req.wasm
 
 WASM_CC = /opt/wasi-sdk/bin/clang
 WASM_CFLAGS = --target=wasm32-unknown-wasi -nostartfiles -Wl,--allow-undefined -Wl,--no-entry -Wl,--export-all

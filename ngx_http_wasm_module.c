@@ -165,10 +165,10 @@ void dump_request(ngx_http_request_t *r) {
 #endif
 
 ngx_int_t ngx_http_wasm_rewrite_handler ( ngx_http_request_t* r ) {
-    r_log_debug("rewrite handler");
+//     r_log_debug("rewrite handler");
 //     dump_request(r);
-    ngx_http_wasm_loc_conf_t  *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
-    r_log_debug("wasm file: '%V'", &wlcf->wasm_path);
+//     ngx_http_wasm_loc_conf_t  *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
+//     r_log_debug("wasm file: '%V'", &wlcf->wasm_path);
 
     wasmer_result_t call_result = maybe_call(r, "rewrite");
     if (call_result != WASMER_OK) {
@@ -180,9 +180,9 @@ ngx_int_t ngx_http_wasm_rewrite_handler ( ngx_http_request_t* r ) {
 }
 
 ngx_int_t ngx_http_wasm_access_handler ( ngx_http_request_t* r ) {
-    r_log_debug("access handler");
-    ngx_http_wasm_loc_conf_t  *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
-    r_log_debug("wasm file: '%V'", &wlcf->wasm_path);
+//     r_log_debug("access handler");
+//     ngx_http_wasm_loc_conf_t  *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
+//     r_log_debug("wasm file: '%V'", &wlcf->wasm_path);
 
     wasmer_result_t call_result = maybe_call(r, "access");
     if (call_result != WASMER_OK) {
@@ -194,9 +194,9 @@ ngx_int_t ngx_http_wasm_access_handler ( ngx_http_request_t* r ) {
 }
 
 ngx_int_t ngx_http_wasm_content_hanlder ( ngx_http_request_t* r ) {
-    r_log_debug("content handler");
-    ngx_http_wasm_loc_conf_t  *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
-    r_log_debug("wasm file: '%V'", &wlcf->wasm_path);
+//     r_log_debug("content handler");
+//     ngx_http_wasm_loc_conf_t  *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
+//     r_log_debug("wasm file: '%V'", &wlcf->wasm_path);
 
     wasmer_result_t call_result = maybe_call(r, "content");
     if (call_result != WASMER_OK) {
@@ -208,9 +208,9 @@ ngx_int_t ngx_http_wasm_content_hanlder ( ngx_http_request_t* r ) {
 }
 
 ngx_int_t ngx_http_wasm_log_handler ( ngx_http_request_t* r ) {
-    r_log_debug("log handler");
-    ngx_http_wasm_loc_conf_t  *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
-    r_log_debug("wasm file: '%V'", &wlcf->wasm_path);
+//     r_log_debug("log handler");
+//     ngx_http_wasm_loc_conf_t  *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
+//     r_log_debug("wasm file: '%V'", &wlcf->wasm_path);
 
     wasmer_result_t call_result = maybe_call(r, "do_log");
     if (call_result != WASMER_OK) {
@@ -243,9 +243,9 @@ static ngx_int_t add_handler(
 static ngx_http_output_header_filter_pt ngx_http_next_header_filter;
 
 static ngx_int_t ngx_http_wasm_header_filter(ngx_http_request_t *r) {
-    r_log_debug("header filter");
-    ngx_http_wasm_loc_conf_t  *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
-    r_log_debug("wasm file: '%V'", &wlcf->wasm_path);
+//     r_log_debug("header filter");
+//     ngx_http_wasm_loc_conf_t  *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
+//     r_log_debug("wasm file: '%V'", &wlcf->wasm_path);
 
     wasmer_result_t call_result = maybe_call(r, "header_filter");
     if (call_result != WASMER_OK) {
@@ -260,9 +260,9 @@ static ngx_int_t ngx_http_wasm_header_filter(ngx_http_request_t *r) {
 static ngx_http_output_body_filter_pt ngx_http_next_body_filter;
 
 static ngx_int_t ngx_http_wasm_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
-    r_log_debug("body filter");
-    ngx_http_wasm_loc_conf_t *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
-    r_log_debug("wasm file: '%V'", &wlcf->wasm_path);
+//     r_log_debug("body filter");
+//     ngx_http_wasm_loc_conf_t *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
+//     r_log_debug("wasm file: '%V'", &wlcf->wasm_path);
 
     wasmer_result_t call_result = maybe_call(r, "body_filter");
     if (call_result != WASMER_OK) {
@@ -309,6 +309,7 @@ static ngx_int_t ngx_http_wasm_postconf ( ngx_conf_t* cf ) {
 }
 
 ngx_int_t ngx_http_wasm_init_proc ( ngx_cycle_t* cycle ) {
+    (void)cycle;
 //     ngx_log_debug(NGX_LOG_DEBUG, cycle->log, 0, "init proc");
 //     ngx_log_stderr(0, "init proc (%d > %d)", getppid(), getpid());
 
