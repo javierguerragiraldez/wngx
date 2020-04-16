@@ -6,6 +6,34 @@
 #include "wngx_structs.h"
 #include "utils.h"
 
+
+
+uint8_t *read_file(ngx_pool_t *pool, const char *fname, uint32_t *out_len) {
+	// read .wasm file
+    uint8_t *bytes = NULL;
+    long len = 0;
+    long readlen = 0;
+
+	FILE *file = fopen(fname, "r");
+    if (!file) goto end;
+
+	fseek(file, 0, SEEK_END);
+	len = ftell(file);
+	bytes = ngx_pcalloc(pool, len);
+    if (!bytes) goto end;
+
+	fseek(file, 0, SEEK_SET);
+	readlen = fread(bytes, 1, len, file);
+
+end:
+	fclose(file);
+    if (out_len)
+        *out_len = readlen;
+    return bytes;
+}
+
+
+
 ngx_uint_t count_ngx_list(const ngx_list_t *list) {
     ngx_uint_t n = 0;
     const ngx_list_part_t *part = &list->part;
