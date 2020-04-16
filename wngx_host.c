@@ -51,6 +51,9 @@ static void wngx_get_request (
     uint8_t *mem = wasmer_memory_data(mem_ctx);
     if (!mem) return;
 
+    uint32_t memsize = wasmer_memory_data_length(mem_ctx);
+    if (buff_off + buff_size >= memsize) return;
+
     pack_request(r, mem, buff_off, buff_size);
 }
 
@@ -62,6 +65,12 @@ static const char *dup_wasmer_error() {
     char *error_str = calloc(error_len, 1);
     wasmer_last_error_message(error_str, error_len);
     return error_str;
+}
+
+void log_wasmer_error(ngx_http_request_t *r) {
+    const char *w_err = dup_wasmer_error();
+    r_log_debug("wasmer error: '%s'", w_err);
+    free((void*)w_err);
 }
 
 static uint32_t wngx_get_uri(
@@ -230,6 +239,7 @@ static wasmer_instance_t *get_or_create_wasm_instance(ngx_http_request_t *r) {
         r_log_debug("instantiate_result: %d: %p", instantiate_result, instance);
         if (instantiate_result != WASMER_OK) {
             r_log_debug("Error instantiating WASM module");
+            log_wasmer_error(r);
             return NULL;
         }
 

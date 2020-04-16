@@ -9,7 +9,6 @@
 
 
 uint8_t *read_file(ngx_pool_t *pool, const char *fname, uint32_t *out_len) {
-	// read .wasm file
     uint8_t *bytes = NULL;
     long len = 0;
     long readlen = 0;
@@ -68,7 +67,6 @@ void pack_request (
     uint32_t dst_offst,
     uint32_t dst_size
 ) {
-
     u_char *header_start = r->header_in->start;
     u_char *header_end = r->header_in->end;
 
@@ -84,7 +82,7 @@ void pack_request (
                         + header_end - header_start;
     if (dst_size < dst_r->total_size)
         return;
-    //wngx_str c =  header_start - mem + dst_buf;
+    ngx_memcpy(dst_buf, header_start, header_end - header_start);
 
     u_char *ref_p = header_start - dst_r->buf_start;
 

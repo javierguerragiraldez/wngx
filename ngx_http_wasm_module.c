@@ -173,6 +173,7 @@ ngx_int_t ngx_http_wasm_rewrite_handler ( ngx_http_request_t* r ) {
     wasmer_result_t call_result = maybe_call(r, "rewrite");
     if (call_result != WASMER_OK) {
         r_log_debug("error calling 'rewrite' method");
+        log_wasmer_error(r);
         return NGX_ERROR;
     }
 
@@ -187,6 +188,7 @@ ngx_int_t ngx_http_wasm_access_handler ( ngx_http_request_t* r ) {
     wasmer_result_t call_result = maybe_call(r, "access");
     if (call_result != WASMER_OK) {
         r_log_debug("error calling 'access' method");
+        log_wasmer_error(r);
         return NGX_ERROR;
     }
 
@@ -201,6 +203,7 @@ ngx_int_t ngx_http_wasm_content_hanlder ( ngx_http_request_t* r ) {
     wasmer_result_t call_result = maybe_call(r, "content");
     if (call_result != WASMER_OK) {
         r_log_debug("error calling 'content' method");
+        log_wasmer_error(r);
         return NGX_ERROR;
     }
 
@@ -215,6 +218,7 @@ ngx_int_t ngx_http_wasm_log_handler ( ngx_http_request_t* r ) {
     wasmer_result_t call_result = maybe_call(r, "do_log");
     if (call_result != WASMER_OK) {
         r_log_debug("error calling 'log' method");
+        log_wasmer_error(r);
         return NGX_ERROR;
     }
 
@@ -250,6 +254,7 @@ static ngx_int_t ngx_http_wasm_header_filter(ngx_http_request_t *r) {
     wasmer_result_t call_result = maybe_call(r, "header_filter");
     if (call_result != WASMER_OK) {
         r_log_debug("error calling 'header_filter' method");
+        log_wasmer_error(r);
         return NGX_ERROR;
     }
 
@@ -267,6 +272,7 @@ static ngx_int_t ngx_http_wasm_body_filter(ngx_http_request_t *r, ngx_chain_t *i
     wasmer_result_t call_result = maybe_call(r, "body_filter");
     if (call_result != WASMER_OK) {
         r_log_debug("error calling 'body_filter' method");
+        log_wasmer_error(r);
         return NGX_ERROR;
     }
 
