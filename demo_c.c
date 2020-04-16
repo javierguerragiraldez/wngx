@@ -1,29 +1,22 @@
 
 const unsigned buff_size = 1024;
-
-char buffs[4][buff_size];
+char buff[buff_size];
 unsigned urilen = 0;
 
-extern int wngx_get_uri(char *buf, unsigned len);
-extern void wngx_add_header(char *key, unsigned key_len, char *val, unsigned val_len);
+#define LIT_AND_LEN(s) (s), (sizeof(s)-1)
 
-static void string_copy(char *dst, const char *src, unsigned len) {
-    int i;
-    for (i = 0; i < len; i++) {
-        dst[i] = src[i];
-    }
-}
+extern int wngx_get_uri(char *buf, unsigned len);
+extern void wngx_add_header(const char *key, unsigned key_len, const char *val, unsigned val_len);
 
 
 void rewrite() {}
 
 void access () {
-    urilen = wngx_get_uri(buffs[1], buff_size);
+    urilen = wngx_get_uri(buff, buff_size);
 }
 
 void header_filter() {
-    string_copy(buffs[2], "X-hello", 7);
-    wngx_add_header(buffs[2], 7, buffs[1], urilen);
+    wngx_add_header(LIT_AND_LEN("X-C-says-help"), buff, urilen);
 }
 
 void body_filter() {}

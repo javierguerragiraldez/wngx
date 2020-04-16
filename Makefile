@@ -1,4 +1,4 @@
-MAIN_DIR=~/devel/trystuff
+MAIN_DIR=$(abspath ../..)
 
 NGX_DIR=$(MAIN_DIR)/nginx-1.16.1
 NGX_OUTDIR=$(NGX_DIR)/out
@@ -20,7 +20,7 @@ HEADERS= \
 
 
 
-default: install
+default: modules install
 
 configure: $(NGX_MAKE)
 

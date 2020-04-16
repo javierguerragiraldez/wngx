@@ -366,7 +366,7 @@ void dump_str_list(ngx_http_request_t *r, const ngx_list_t *list, const ngx_buf_
 void dump_request(ngx_http_request_t *r) {
     r_log_debug("--- request ---");
 
-#define rv(vn) r_log_debug(#vn "'%V'", &(vn))
+#define rv(vn) is_in_buf(r, #vn, r->header_in, (vn))
 
     rv(r->request_line);
     rv(r->uri);
