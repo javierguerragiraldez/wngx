@@ -7,7 +7,13 @@ export fn rewrite() void {}
 
 export fn access() void {
     req = wngx.Request.init(wngx.default_allocator) catch return;
-    wngx.log(0x100, "req: {}", .{req});
+    var r = req orelse return;
+
+    wngx.log(0x100, "req: {}", .{r});
+    var hdr_it = r.headers.iterator();
+    while(hdr_it.next()) |kv| {
+        wngx.log(0x100, "  - {}: {}", .{ kv.key, kv.value });
+    }
 }
 
 export fn header_filter() void {

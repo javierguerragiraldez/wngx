@@ -70,6 +70,8 @@ pub const Request = struct {
         wngx_get_request(request_bytes.ptr, request_bytes.len);
         var w_req = @ptrCast(*w_request, request_bytes.ptr);
 
+        var w_hd = @ptrCast([*]w_header, request_bytes.ptr + @sizeOf(w_request))[0..w_req.n_headers];
+
         return Request {
             .request_line = w_req.request_line.toSlice() orelse "",
             .method = w_req.method.toSlice() orelse "",
@@ -79,8 +81,20 @@ pub const Request = struct {
             .uri_args = w_req.uri_args.toSlice() orelse "",
             .uri_exten = w_req.uri_exten.toSlice() orelse "",
 
-            .headers = HeaderMap.init(allocator),
+            .headers = header_hash(allocator, w_hd),
         };
+    }
+
+    fn header_hash(allocator: *std.mem.Allocator, w_hdrs: []const w_header) HeaderMap {
+        var headers = HeaderMap.init(allocator);
+
+        for (w_hdrs) |w_h| {
+            const key = w_h.name.toSlice() orelse continue;
+            const val = w_h.value.toSlice() orelse continue;
+            _ = headers.put(key, val) catch return headers;
+        }
+
+        return headers;
     }
 };
 

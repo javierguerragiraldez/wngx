@@ -52,5 +52,5 @@ WASM_CFLAGS = --target=wasm32-unknown-wasi -nostartfiles -Wl,--allow-undefined -
 %.wasm: %.c
 	$(WASM_CC) $(WASM_CFLAGS) -o $@ $<
 
-%.wasm: %.zig
+%.wasm: %.zig wngx.zig
 	zig build-lib -target wasm32-freestanding $<

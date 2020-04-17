@@ -99,8 +99,8 @@ void pack_request (
         const ngx_list_part_t *part = &l->part;
         ngx_table_elt_t *h = part->elts;
 
-        u_int i = 0, j = 0;
-        for (i = 0; ; i++) {
+        u_int i, j;
+        for (i = 0, j = 0; ; i++, j++) {
             if (i >= part->nelts) {
                 if (part->next == NULL) break;
 
@@ -108,8 +108,8 @@ void pack_request (
                 h = part->elts;
                 i = 0;
             }
-            dst_r->headers[j].name = pack_str(h->key, ref_p);
-            dst_r->headers[j].value = pack_str(h->value, ref_p);
+            dst_r->headers[j].name = pack_str(h[i].key, ref_p);
+            dst_r->headers[j].value = pack_str(h[i].value, ref_p);
         }
     }
 }
