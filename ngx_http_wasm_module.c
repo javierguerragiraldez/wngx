@@ -33,7 +33,7 @@ static void log_cf(const ngx_conf_t *cf, const char *msg, const void *p) {
 
 /* handlers */
 
-ngx_int_t ngx_http_wasm_rewrite_handler ( ngx_http_request_t* r ) {
+static ngx_int_t ngx_http_wasm_rewrite_handler ( ngx_http_request_t* r ) {
     wasmer_result_t call_result = maybe_call(r, "rewrite");
     if (call_result != WASMER_OK) {
         r_log_debug("error calling 'rewrite' method");
@@ -44,7 +44,7 @@ ngx_int_t ngx_http_wasm_rewrite_handler ( ngx_http_request_t* r ) {
     return NGX_DECLINED;
 }
 
-ngx_int_t ngx_http_wasm_access_handler ( ngx_http_request_t* r ) {
+static ngx_int_t ngx_http_wasm_access_handler ( ngx_http_request_t* r ) {
     wasmer_result_t call_result = maybe_call(r, "access");
     if (call_result != WASMER_OK) {
         r_log_debug("error calling 'access' method");
@@ -55,7 +55,7 @@ ngx_int_t ngx_http_wasm_access_handler ( ngx_http_request_t* r ) {
     return NGX_DECLINED;
 }
 
-ngx_int_t ngx_http_wasm_content_hanlder ( ngx_http_request_t* r ) {
+static ngx_int_t ngx_http_wasm_content_hanlder ( ngx_http_request_t* r ) {
     wasmer_result_t call_result = maybe_call(r, "content");
     if (call_result != WASMER_OK) {
         r_log_debug("error calling 'content' method");
@@ -94,7 +94,7 @@ static ngx_int_t ngx_http_wasm_body_filter(ngx_http_request_t *r, ngx_chain_t *i
 }
 
 
-ngx_int_t ngx_http_wasm_log_handler ( ngx_http_request_t* r ) {
+static ngx_int_t ngx_http_wasm_log_handler ( ngx_http_request_t* r ) {
     wasmer_result_t call_result = maybe_call(r, "do_log");
     if (call_result != WASMER_OK) {
         r_log_debug("error calling 'log' method");
@@ -164,21 +164,6 @@ static char *ngx_http_wasm_merge_loc_conf(ngx_conf_t *cf, void *parent, void *ch
 }
 
 
-/* conf commands descriptions */
-
-static ngx_command_t  ngx_http_wasm_commands[] = {
-    {
-        ngx_string("wasm_file"),
-        NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF
-        | NGX_CONF_TAKE12,
-        ngx_http_wasm_set_loc_conf_module_file,
-        NGX_HTTP_LOC_CONF_OFFSET,
-        0, NULL,
-    },
-    ngx_null_command
-};
-
-
 /* postconf setup */
 
 static ngx_int_t add_handler(
@@ -244,6 +229,19 @@ ngx_int_t ngx_http_wasm_init_proc ( ngx_cycle_t* cycle ) {
 
 
 /* register structs */
+
+static ngx_command_t  ngx_http_wasm_commands[] = {
+    {
+        ngx_string("wasm_file"),
+        NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF
+        | NGX_CONF_TAKE12,
+        ngx_http_wasm_set_loc_conf_module_file,
+        NGX_HTTP_LOC_CONF_OFFSET,
+        0, NULL,
+    },
+    ngx_null_command
+};
+
 
 static ngx_http_module_t  ngx_http_wasm_module_ctx = {
     NULL,                           /* preconfiguration */
