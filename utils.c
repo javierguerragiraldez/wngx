@@ -13,21 +13,20 @@ uint8_t *read_file(ngx_pool_t *pool, const char *fname, uint32_t *out_len) {
     long len = 0;
     long readlen = 0;
 
-	FILE *file = fopen(fname, "r");
+    FILE *file = fopen(fname, "r");
     if (!file) goto end;
 
-	fseek(file, 0, SEEK_END);
-	len = ftell(file);
-	bytes = ngx_pcalloc(pool, len);
+    fseek(file, 0, SEEK_END);
+    len = ftell(file);
+    bytes = ngx_pcalloc(pool, len);
     if (!bytes) goto end;
 
-	fseek(file, 0, SEEK_SET);
-	readlen = fread(bytes, 1, len, file);
+    fseek(file, 0, SEEK_SET);
+    readlen = fread(bytes, 1, len, file);
 
 end:
-	fclose(file);
-    if (out_len)
-        *out_len = readlen;
+    if (file) fclose(file);
+    if (out_len) *out_len = readlen;
     return bytes;
 }
 

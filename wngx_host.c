@@ -5,10 +5,11 @@
 
 #include "wasmer.h"
 
-#include "ngx_http_wasm_module.h"
-#include "wngx_host.h"
 #include "utils.h"
+#include "wngx_host.h"
+#include "ngx_http_wasm_module.h"
 
+/* symbols imported by WASM module */
 
 static void wngx_log(
     const wasmer_instance_context_t* wctx,
@@ -18,7 +19,7 @@ static void wngx_log(
     const ngx_http_request_t *r = wasmer_instance_context_data_get(wctx);
     if (!r) return;
 
-    ngx_http_wasm_loc_conf_t *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
+//     ngx_http_wasm_conf_t *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
 
     const wasmer_memory_t *mem_ctx = wasmer_instance_context_memory(wctx, 0);
     if (!mem_ctx) return;
@@ -27,8 +28,8 @@ static void wngx_log(
     if (!mem) return;
 
     ngx_str_t msg_str = { .len = msg_len, .data = mem + msg };
-
-    ngx_log_debug(level, r->connection->log, 0, "module %V: '%V'", &wlcf->wasm_path, &msg_str);
+//     ngx_log_debug(level, r->connection->log, 0, "module %V: '%V'", &wlcf->wasm_path, &msg_str);
+    ngx_log_debug(level, r->connection->log, 0, "module -: '%V'", &msg_str);
 }
 
 static uint32_t wngx_request_size ( const wasmer_instance_context_t* wctx ) {
@@ -62,14 +63,14 @@ static void wngx_get_request (
 
 static const char *dup_wasmer_error() {
     int error_len = wasmer_last_error_length();
-    char *error_str = calloc(error_len, 1);
+    char *error_str = ngx_pcalloc(ngx_cycle->pool, error_len);
     wasmer_last_error_message(error_str, error_len);
     return error_str;
 }
 
-void log_wasmer_error(ngx_http_request_t *r) {
+void log_wasmer_error(const char *msg) {
     const char *w_err = dup_wasmer_error();
-    r_log_debug("wasmer error: '%s'", w_err);
+    ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "%s: %s", msg, w_err);
     free((void*)w_err);
 }
 
@@ -192,9 +193,93 @@ static void init_imports() {
 }
 
 
+wngx_module * wngx_host_load_module(const ngx_str_t* path) {
+    ngx_log_stderr(NGX_LOG_STDERR, "wngx_host_load_module %V", path);
+    ngx_log_stderr(NGX_LOG_STDERR, "as C string: '%s'", path->data);
+    wngx_module *mod = ngx_pcalloc(ngx_cycle->pool, sizeof(wngx_module));
+    if (mod == NULL) {
+        ngx_log_abort(0, "can't alloc module");
+        return NULL;
+    }
+
+    uint32_t bytes_len;
+    uint8_t *bytes = read_file(ngx_cycle->pool, (const char *)path->data, &bytes_len);
+    if (bytes == NULL) {
+        ngx_log_abort(0, "can't read WASM file '%V'", path);
+//         if (mod) ngx_free(mod);
+        return NULL;
+    }
+
+    wasmer_result_t compile_result = wasmer_compile(
+        &mod->w_module, bytes, bytes_len);
+    if (compile_result != WASMER_OK) {
+        log_wasmer_error("compiling module");
+        ngx_free(bytes);
+        ngx_free(mod);
+        return NULL;
+    }
+//     show_module_info(r, module);
+
+    return mod;
+}
+
+wngx_instance * wngx_host_load_instance(const wngx_module* mod) {
+    init_imports();
+
+    wngx_instance *inst = ngx_pcalloc(ngx_cycle->pool, sizeof(wngx_instance));
+    if (inst == NULL) {
+        ngx_log_abort(0, "can't alloc instance");
+        return NULL;
+    }
+
+    wasmer_result_t instantiate_result = wasmer_module_instantiate(
+        mod->w_module, &inst->w_instance, imports, sizeof_array(imports));
+    if (instantiate_result != WASMER_OK) {
+        ngx_log_abort(0, "can't create instance");
+        log_wasmer_error("instantiating WASM module");
+        return NULL;
+    }
+
+    return inst;
+}
+
+wasmer_result_t maybe_call(wngx_instance* inst, const char* method) {
+    wasmer_value_t params[] = {};
+    wasmer_value_t results[] = {};
+
+    wasmer_result_t rc = wasmer_instance_call(inst->w_instance, method,
+                                params, sizeof_array(params),
+                                results, sizeof_array(results));
+
+    return rc;
+}
+
+
+
+#if 0
+
+static void show_module_info(ngx_http_request_t *r, const wasmer_module_t *module) {
+    wasmer_export_descriptors_t *descs;
+
+    wasmer_export_descriptors(module, &descs);
+    int ndescs = wasmer_export_descriptors_len(descs);
+
+    int i;
+    for (i = 0; i < ndescs; i++) {
+        wasmer_export_descriptor_t *desc = wasmer_export_descriptors_get(descs, i);
+        wasmer_byte_array expname = wasmer_export_descriptor_name(desc);
+        wasmer_import_export_kind kind = wasmer_export_descriptor_kind(desc);
+        r_log_debug("export: %*s, kind: %s (%d)", expname.bytes_len, expname.bytes,
+            kind == WASM_FUNCTION ? "Function" :
+            kind == WASM_GLOBAL ? "Global" :
+            kind == WASM_MEMORY ? "Memory" :
+            kind == WASM_TABLE ? "Table" :
+                "unknown", kind );
+    }
+}
 
 static wasmer_instance_t *get_or_create_wasm_instance(ngx_http_request_t *r) {
-    ngx_http_wasm_loc_conf_t *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
+    ngx_http_wasm_conf_t *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
     if (wlcf->wasm_path.data == NULL) return NULL;
 
     if (wlcf->wasm_module == NULL) {
@@ -209,6 +294,8 @@ static wasmer_instance_t *get_or_create_wasm_instance(ngx_http_request_t *r) {
             return NULL;
         }
         wlcf->wasm_module = module;
+
+        show_module_info(r, module);
     }
 
     ngx_http_wasm_ctx *ctx = ngx_http_get_module_ctx(r, ngx_http_wasm_module);
@@ -253,3 +340,4 @@ wasmer_result_t maybe_call(ngx_http_request_t *r, const char *method) {
 
     return rc;
 }
+#endif

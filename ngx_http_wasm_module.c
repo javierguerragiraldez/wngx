@@ -12,11 +12,33 @@
 
 #include "wasmer.h"
 
-#include "ngx_http_wasm_module.h"
-#include "wngx_host.h"
 #include "utils.h"
+#include "wngx_host.h"
+#include "ngx_http_wasm_module.h"
+
+typedef struct loaded_module {
+    ngx_str_t module_path;
+    wngx_module *module;
+} loaded_module;
+
+typedef struct named_instance {
+    ngx_str_t module_path;
+    ngx_str_t instance_name;
+    wngx_instance *instance;
+} named_instance;
+
+typedef struct ngx_http_wasm_main_conf_t {
+    ngx_array_t modules;
+    ngx_array_t instances;
+} ngx_http_wasm_main_conf_t;
 
 /* misc funcs */
+
+// #define d(...) ngx_log_debug(NGX_LOG_DEBUG_HTTP, ngx_cycle->log, 0, __VA_ARGS__)
+#define d(...) ngx_log_stderr(NGX_LOG_STDERR, __VA_ARGS__)
+
+#define elts_i_ptr(v, a, t, i)  const t *v = &((const t *)(a)->elts)[i]
+
 
 static void log_cf(const ngx_conf_t *cf, const char *msg, const void *p) {
     ngx_log_stderr(NGX_LOG_STDERR, "%s(%p) :: cf: %p, #args: %d, module_type: %Xd, cmd_type: %Xd",
@@ -29,39 +51,68 @@ static void log_cf(const ngx_conf_t *cf, const char *msg, const void *p) {
     }
 }
 
+void maybe_call_each(const ngx_array_t *instances, const char *method) {
+    ngx_uint_t i;
+    for (i = 0; i < instances->nelts; ++i) {
+        elts_i_ptr(inst, instances, named_instance, i);
 
+        wasmer_result_t call_result = maybe_call(inst->instance, method);
+        if (call_result != WASMER_OK) {
+            log_wasmer_error("error calling '%s' method");
+        }
+    }
+}
 
 /* handlers */
 
 static ngx_int_t ngx_http_wasm_rewrite_handler ( ngx_http_request_t* r ) {
-    wasmer_result_t call_result = maybe_call(r, "rewrite");
-    if (call_result != WASMER_OK) {
-        r_log_debug("error calling 'rewrite' method");
-        log_wasmer_error(r);
+    ngx_http_wasm_conf_t *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
+    if (wlcf == NULL) {
+        r_log_debug("no local conf ??");
         return NGX_ERROR;
     }
+    maybe_call_each(wlcf->instances, "rewrite");
+//     wasmer_result_t call_result = maybe_call(wlcf->instance, "rewrite");
+//     if (call_result != WASMER_OK) {
+// //         r_log_debug("error calling 'rewrite' method");
+//         log_wasmer_error("error calling 'rewrite' method");
+//         return NGX_ERROR;
+//     }
 
     return NGX_DECLINED;
 }
 
 static ngx_int_t ngx_http_wasm_access_handler ( ngx_http_request_t* r ) {
-    wasmer_result_t call_result = maybe_call(r, "access");
-    if (call_result != WASMER_OK) {
-        r_log_debug("error calling 'access' method");
-        log_wasmer_error(r);
+    ngx_http_wasm_conf_t *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
+    if (wlcf == NULL) {
+        r_log_debug("no local conf ??");
         return NGX_ERROR;
     }
+    maybe_call_each(wlcf->instances, "access");
+//     wasmer_result_t call_result = maybe_call(wlcf->instance, "access");
+//     if (call_result != WASMER_OK) {
+// //         r_log_debug("error calling 'access' method");
+//         log_wasmer_error("error calling 'access' method");
+//         return NGX_ERROR;
+//     }
 
     return NGX_DECLINED;
 }
 
 static ngx_int_t ngx_http_wasm_content_hanlder ( ngx_http_request_t* r ) {
-    wasmer_result_t call_result = maybe_call(r, "content");
-    if (call_result != WASMER_OK) {
-        r_log_debug("error calling 'content' method");
-        log_wasmer_error(r);
+    ngx_http_wasm_conf_t *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
+    if (wlcf == NULL) {
+        r_log_debug("no local conf ??");
         return NGX_ERROR;
     }
+    maybe_call_each(wlcf->instances, "content");
+
+//     wasmer_result_t call_result = maybe_call(wlcf->instance, "content");
+//     if (call_result != WASMER_OK) {
+// //         r_log_debug("error calling 'content' method");
+//         log_wasmer_error("error calling 'content' method");
+//         return NGX_ERROR;
+//     }
 
     return NGX_DECLINED;
 }
@@ -69,12 +120,19 @@ static ngx_int_t ngx_http_wasm_content_hanlder ( ngx_http_request_t* r ) {
 static ngx_http_output_header_filter_pt ngx_http_next_header_filter;
 
 static ngx_int_t ngx_http_wasm_header_filter(ngx_http_request_t *r) {
-    wasmer_result_t call_result = maybe_call(r, "header_filter");
-    if (call_result != WASMER_OK) {
-        r_log_debug("error calling 'header_filter' method");
-        log_wasmer_error(r);
+    ngx_http_wasm_conf_t *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
+    if (wlcf == NULL) {
+        r_log_debug("no local conf ??");
         return NGX_ERROR;
     }
+    maybe_call_each(wlcf->instances, "header_filter");
+
+//     wasmer_result_t call_result = maybe_call(wlcf->instance, "header_filter");
+//     if (call_result != WASMER_OK) {
+// //         r_log_debug("error calling 'header_filter' method");
+//         log_wasmer_error("error calling 'header_filter' method");
+//         return NGX_ERROR;
+//     }
 
     return ngx_http_next_header_filter (r);
 }
@@ -83,24 +141,38 @@ static ngx_int_t ngx_http_wasm_header_filter(ngx_http_request_t *r) {
 static ngx_http_output_body_filter_pt ngx_http_next_body_filter;
 
 static ngx_int_t ngx_http_wasm_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
-    wasmer_result_t call_result = maybe_call(r, "body_filter");
-    if (call_result != WASMER_OK) {
-        r_log_debug("error calling 'body_filter' method");
-        log_wasmer_error(r);
+    ngx_http_wasm_conf_t *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
+    if (wlcf == NULL) {
+        r_log_debug("no local conf ??");
         return NGX_ERROR;
     }
+    maybe_call_each(wlcf->instances, "body_filter");
+
+//     wasmer_result_t call_result = maybe_call(wlcf->instance, "body_filter");
+//     if (call_result != WASMER_OK) {
+// //         r_log_debug("error calling 'body_filter' method");
+//         log_wasmer_error("error calling 'body_filter' method");
+//         return NGX_ERROR;
+//     }
 
     return ngx_http_next_body_filter(r, in);
 }
 
 
 static ngx_int_t ngx_http_wasm_log_handler ( ngx_http_request_t* r ) {
-    wasmer_result_t call_result = maybe_call(r, "do_log");
-    if (call_result != WASMER_OK) {
-        r_log_debug("error calling 'log' method");
-        log_wasmer_error(r);
+    ngx_http_wasm_conf_t *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
+    if (wlcf == NULL) {
+        r_log_debug("no local conf ??");
         return NGX_ERROR;
     }
+    maybe_call_each(wlcf->instances, "do_log");
+
+//     wasmer_result_t call_result = maybe_call(wlcf->instance, "do_log");
+//     if (call_result != WASMER_OK) {
+// //         r_log_debug("error calling 'log' method");
+//         log_wasmer_error("error calling 'log' method");
+//         return NGX_ERROR;
+//     }
 
     return NGX_DECLINED;
 }
@@ -111,16 +183,45 @@ static ngx_int_t ngx_http_wasm_log_handler ( ngx_http_request_t* r ) {
 
 /* conf callbacks */
 
-
-static void *ngx_http_wasm_create_loc_conf(ngx_conf_t *cf) {
-    ngx_http_wasm_loc_conf_t *conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_wasm_loc_conf_t));
+static void *ngx_http_wasm_create_main_conf(ngx_conf_t *cf) {
+    ngx_http_wasm_main_conf_t *conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_wasm_main_conf_t));
     if (conf == NULL) {
         return NGX_CONF_ERROR;
     }
-    log_cf(cf, "create_loc_conf", conf);
+    log_cf(cf, "create_main_conf", conf);
+
+    ngx_array_init(&conf->modules, cf->pool, 10, sizeof(loaded_module));
+    ngx_array_init(&conf->instances, cf->pool, 10, sizeof(named_instance));
 
     return conf;
 }
+
+static void *ngx_http_wasm_create_conf(ngx_conf_t *cf) {
+    ngx_http_wasm_conf_t *conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_wasm_conf_t));
+    if (conf == NULL) {
+        return NGX_CONF_ERROR;
+    }
+    log_cf(cf, "create_conf", conf);
+
+//     if (cf->cmd_type & NGX_MAIN_CONF) {
+//         conf->root = conf;
+//         conf->modules = ngx_array_create(cf->pool, 10, sizeof(loaded_module));
+//         if (conf->modules == NULL)
+//             return NGX_CONF_ERROR;
+//     }
+
+    conf->instances = ngx_array_create(cf->pool, 10, sizeof(named_instance));
+    if (conf->instances == NULL)
+        return NGX_CONF_ERROR;
+
+    return conf;
+}
+
+static inline int streq(const ngx_str_t *s1, const ngx_str_t *s2) {
+    return (s1->len == s2->len)
+        && (ngx_memcmp(s1->data, s2->data, s1->len) == 0);
+}
+
 
 
 static char *ngx_http_wasm_set_loc_conf_module_file(
@@ -136,7 +237,223 @@ static char *ngx_http_wasm_set_loc_conf_module_file(
         return "syntax: wasm_file path [name];";
     }
 
-    ngx_http_wasm_loc_conf_t *wlcf = conf;
+    ngx_http_wasm_conf_t *wlcf = conf;
+    if (wlcf == NULL)   return "cant't find local config";
+
+    ngx_http_wasm_main_conf_t *wmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_wasm_module);
+    d("wmcf: %p", wmcf);
+
+    ngx_str_t *args = cf->args->elts;
+
+    named_instance *inst = ngx_array_push(wlcf->instances);
+    if (inst == NULL) {
+        return "can't push new instance";
+    }
+    ngx_memzero(inst, sizeof(*inst));
+
+    inst->module_path = args[1];
+    if (cf->args->nelts > 2) {
+        inst->instance_name = args[2];
+    } else {
+        ngx_str_null(&inst->instance_name);
+    }
+
+//     wlcf->wasm_path = args[1];
+//     if (cf->args->nelts > 2) {
+//         wlcf->instance_name = args[2];
+//     }
+//
+//     ngx_log_stderr(NGX_LOG_STDERR, "set_loc_conf '%V':'%V'", &wlcf->wasm_path, &wlcf->instance_name);
+
+    return NGX_CONF_OK;
+}
+
+
+static void get_named_instance(named_instance *inst, ngx_array_t *instances, ngx_array_t *modules) {
+    if (inst == NULL || inst->module_path.data == NULL) return;
+    d("inst: %p: %V", inst, &inst->module_path);
+
+    if (inst->instance_name.data != NULL) {
+        /* has a name, search in old named instances */
+        ngx_uint_t i;
+        for (i = 0; i < instances->nelts; i++) {
+            elts_i_ptr(old_inst, instances, named_instance, i);
+            d("old_inst: %p (%V:%V)", old_inst, &old_inst->module_path, &old_inst->instance_name);
+            if (streq(&old_inst->instance_name, &inst->instance_name)
+                && streq(&old_inst->module_path, &inst->module_path)
+            ){
+                d("found!");
+                inst->instance = old_inst->instance;
+                return;
+            }
+        }
+    }
+
+    /* no old instance, get a module */
+    wngx_module *mod = NULL;
+
+    /* search in loaded modules */
+    ngx_uint_t i;
+    for (i = 0; i < modules->nelts; i++) {
+        elts_i_ptr(old_mod, modules, loaded_module, i);
+        d("loaded_module: %p (%V)", old_mod, &old_mod->module_path);
+        if (streq(&old_mod->module_path, &inst->module_path)) {
+            d("found!");
+            mod = old_mod->module;
+            break;
+        }
+    }
+
+    if (mod == NULL) {
+        /* no loaded module, load it */
+        d("loading...");
+        mod = wngx_host_load_module(&inst->module_path);
+    }
+    if (mod == NULL) {
+        ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0,
+                        "can't load module %V", &inst->module_path);
+        return;
+    }
+
+    /* register loaded module */
+    loaded_module *new_mod = ngx_array_push(modules);
+    if (new_mod == NULL) {
+        ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "can't register loaded module");
+        return;
+    }
+    new_mod->module_path = inst->module_path;
+    new_mod->module = mod;
+
+    /* instantiate it */
+    inst->instance = wngx_host_load_instance(mod);
+    if (inst->instance == NULL) {
+        ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0,
+                      "can't instantiate module %V", &inst->module_path);
+        return;
+    }
+
+    if (inst->instance_name.data != NULL) {
+        /* has a name, register it */
+        named_instance *new_inst = ngx_array_push(instances);
+        if (new_inst == NULL) {
+            ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "can't push named module %V:%V",
+                          &inst->module_path, &inst->instance_name);
+            return;
+        }
+        new_inst->module_path = inst->module_path;
+        new_inst->instance_name = inst->instance_name;
+        new_inst->instance = inst->instance;
+    }
+}
+
+static char *ngx_http_wasm_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
+    (void)cf;
+
+    ngx_http_wasm_conf_t *prev = parent;
+    ngx_http_wasm_main_conf_t *root = ngx_http_conf_get_module_main_conf(cf, ngx_http_wasm_module); //prev->root;
+    ngx_http_wasm_conf_t *conf = child;
+
+    if (root == NULL) {
+        ngx_log_debug(NGX_LOG_DEBUG_HTTP, cf->log, 0, "parent %p doesn't have main pointer");
+        return NGX_CONF_OK;
+    }
+
+//     ngx_log_stderr(NGX_LOG_STDERR, "cf: (%p)  - merging %V:%V (%p) => %V:%V (%p)", cf,
+//                    &prev->instance_name, &prev->wasm_path, prev,
+//                    &conf->instance_name, &conf->wasm_path, conf);
+    ngx_log_stderr(NGX_LOG_STDERR, "merge - root: %p (%d/%d)  prev: %p => conf: %p (%p:%d)",
+                   root, root->instances.nelts, root->modules.nelts, prev,
+                   conf, conf->instances, conf->instances ? conf->instances->nelts : 0);
+
+//     if (root->modules == NULL) {
+//         return "can't merge if the root doesn't have a 'modules' list";
+//     }
+//     d("root->modules: %p:%d", root->modules, root->modules->nelts);
+//
+//     if (conf->modules != NULL) {
+//         return "can't merge if the low cond have a 'modules' list";
+//     }
+//
+//     conf->root = root;
+
+    ngx_uint_t i;
+    for (i = 0; i < conf->instances->nelts; i++) {
+        elts_i_ptr(inst, conf->instances, named_instance, i);
+        d("get: %V:%V", &inst->module_path, &inst->instance_name);
+        get_named_instance((named_instance *)inst, &root->instances, &root->modules);
+    }
+
+    for (i = 0; i < conf->instances->nelts; i++) {
+        elts_i_ptr(inst, conf->instances, named_instance, i);
+        d("instance %V:%V -> %p", &inst->module_path, &inst->instance_name, inst->instance);
+    }
+    d("---");
+
+#if 0
+    ngx_uint_t i;
+
+    /* search existing module */
+    const loaded_module *mod = NULL;
+    ngx_log_stderr(NGX_LOG_STDERR, "modules array: %p", conf->modules);
+    ngx_log_stderr(NGX_LOG_STDERR, "modules array: %p(%d)", conf->modules->elts, conf->modules->nelts);
+    for (i = 0; i < conf->modules->nelts; i++) {
+        elts_i_ptr(p, conf->modules, loaded_module, i);
+        if (streq(&p->module_path, &wlcf->wasm_path)) {
+            mod = p;
+            ngx_log_stderr(NGX_LOG_STDERR, "found module: %p", mod);
+            break;
+        }
+    }
+    if (mod == NULL) {
+        /* not found, load it */
+        ngx_log_stderr(NGX_LOG_STDERR, "not found loading %V", &wlcf->wasm_path);
+        loaded_module *new_m = ngx_array_push(wmcf->modules);
+        if (new_m == NULL) {
+            return "can't push new module";
+        }
+        new_m->module_path = wlcf->wasm_path;
+        new_m->module = wngx_host_load_module(&wlcf->wasm_path);
+        if (new_m->module == NULL) return "can't load WASM module";
+
+        mod = new_m;
+    }
+
+
+
+
+
+//     ngx_http_wasm_conf_t *wmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_wasm_module);
+//     ngx_log_stderr(NGX_LOG_STDERR, "wmcf: %p", wmcf);
+
+    ngx_conf_merge_str_value(conf->wasm_path, prev->wasm_path, "");
+
+
+
+#endif
+
+
+
+
+
+
+
+
+
+
+
+#if 0
+
+    ngx_http_wasm_conf_t *wmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_wasm_module);
+    ngx_log_stderr(NGX_LOG_STDERR, "wmcf: %p", wmcf);
+    ngx_log_stderr(NGX_LOG_STDERR, "wmcf: %p, ->modules: %p, ->instances: %p",
+                   wmcf, wmcf->modules, wmcf->instances);
+    if (wmcf == NULL)   return "can't find global config";
+    if (wmcf->modules == NULL) return "!!! no modules array";
+    if (wmcf->instances == NULL) return "!!! no instances array";
+
+    ngx_http_wasm_conf_t *wlcf = conf;
+    if (wlcf == NULL)   return "cant't find local config";
+
     ngx_str_t *args = cf->args->elts;
 
     wlcf->wasm_path = args[1];
@@ -144,21 +461,73 @@ static char *ngx_http_wasm_set_loc_conf_module_file(
         wlcf->instance_name = args[2];
     }
 
-    return NGX_CONF_OK;
-}
+    ngx_log_stderr(NGX_LOG_STDERR, "set_loc_conf '%V':'%V'", &wlcf->wasm_path, &wlcf->instance_name);
+
+    ngx_uint_t i;
+
+    /* search existing module */
+    const loaded_module *mod = NULL;
+    ngx_log_stderr(NGX_LOG_STDERR, "modules array: %p", wmcf->modules);
+    ngx_log_stderr(NGX_LOG_STDERR, "modules array: %p(%d)", wmcf->modules->elts, wmcf->modules->nelts);
+    for (i = 0; i < wmcf->modules->nelts; i++) {
+        elts_i_ptr(p, wmcf->modules, loaded_module, i);
+        if (streq(&p->module_path, &wlcf->wasm_path)) {
+            mod = p;
+            ngx_log_stderr(NGX_LOG_STDERR, "found module: %p", mod);
+            break;
+        }
+    }
+    if (mod == NULL) {
+        /* not found, load it */
+        ngx_log_stderr(NGX_LOG_STDERR, "not found loading %V", &wlcf->wasm_path);
+        loaded_module *new_m = ngx_array_push(wmcf->modules);
+        if (new_m == NULL) {
+            return "can't push new module";
+        }
+        new_m->module_path = wlcf->wasm_path;
+        new_m->module = wngx_host_load_module(&wlcf->wasm_path);
+        if (new_m->module == NULL) return "can't load WASM module";
+
+        mod = new_m;
+    }
+
+    const named_instance *inst = NULL;
+
+    if (wlcf->instance_name.data != NULL) {
+        /* search existing named instance */
+        for (i = 0; i < wmcf->instances->nelts; i++) {
+            elts_i_ptr(p, wmcf->instances, named_instance, i);
+            if (streq(&p->module_path, &wlcf->wasm_path)
+                && streq(&p->instance_name, &wlcf->instance_name)
+            ) {
+                inst = p;
+                break;
+            }
+        }
+        if (inst == NULL) {
+            /* not found, create new */
+            named_instance *new_inst = ngx_array_push(wmcf->instances);
+            if (new_inst == NULL) return "can't push new instance";
+
+            new_inst->module_path = wlcf->wasm_path;
+            new_inst->instance_name = wlcf->instance_name;
+            new_inst->instance = wngx_host_load_instance(mod->module);
+            if (new_inst->instance == NULL) return "can't create new WASM instance";
+
+            inst = new_inst;
+        }
+        wlcf->instance = inst->instance;
+
+    } else {
+        /* unnamed, just create one */
+        wlcf->instance = wngx_host_load_instance(mod->module);
+        if (wlcf->instance == NULL) return "can't create new (unnamed) WASM instance";
+    }
+
+#endif
 
 
-static char *ngx_http_wasm_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
-    (void)cf;
 
-    ngx_http_wasm_loc_conf_t *prev = parent;
-    ngx_http_wasm_loc_conf_t *conf = child;
-
-    ngx_log_stderr(NGX_LOG_STDERR, "cf: (%p)  - merging %V:%V (%p) => %V:%V (%p)", cf,
-                   &prev->instance_name, &prev->wasm_path, prev,
-                   &conf->instance_name, &conf->wasm_path, conf);
-
-    ngx_conf_merge_str_value(conf->wasm_path, prev->wasm_path, "");
 
     return NGX_CONF_OK;
 }
@@ -184,7 +553,7 @@ static ngx_int_t add_handler(
 
 
 static ngx_int_t ngx_http_wasm_postconf ( ngx_conf_t* cf ) {
-    ngx_http_wasm_loc_conf_t *wlcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_wasm_module);
+    ngx_http_wasm_conf_t *wlcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_wasm_module);
     if (wlcf == NULL) {
         ngx_conf_log_error(NGX_LOG_DEBUG_ALL, cf, NGX_EBADF, "no wasm conf");
         return NGX_ERROR;
@@ -247,13 +616,13 @@ static ngx_http_module_t  ngx_http_wasm_module_ctx = {
     NULL,                           /* preconfiguration */
     ngx_http_wasm_postconf,         /* postconfiguration */
 
-    NULL,                           /* create main configuration */
+    ngx_http_wasm_create_main_conf, /* create main configuration */
     NULL,                           /* init main configuration */
 
     NULL,                           /* create server configuration */
     NULL,                           /* merge server configuration */
 
-    ngx_http_wasm_create_loc_conf,  /* create location configuration */
+    ngx_http_wasm_create_conf,      /* create location configuration */
     ngx_http_wasm_merge_loc_conf,   /* merge location configuration */
 };
 
