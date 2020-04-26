@@ -192,6 +192,7 @@ static void init_imports() {
     }
 }
 
+/* functions used by other C files */
 
 wngx_module * wngx_host_load_module(const ngx_str_t* path) {
     ngx_log_stderr(NGX_LOG_STDERR, "wngx_host_load_module %V", path);

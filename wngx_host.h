@@ -2,7 +2,6 @@
 #define wngx_host_h
 
 typedef struct wngx_module {
-//     ngx_str_t *path;
     wasmer_module_t *w_module;
 } wngx_module;
 
