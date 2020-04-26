@@ -2,13 +2,14 @@
 #define wasmdemo_utils_h
 
 #define sizeof_array(x) (sizeof(x) / sizeof((x)[0]))
-// #define sizeof_litstr(s) (sizeof_array(s) - 1)
 #define LIT_BYTEARRAY(s) { .bytes = (const uint8_t*)(s), .bytes_len=sizeof(s)-1 }
 // #define STR_BYTEARRAY(s) { .bytes = (const uint8_t*)(s), .bytes_len=strlen(s) }
 
 
-#define r_log_debug(...) ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, __VA_ARGS__)
-
+inline int bytearray_eq(const wasmer_byte_array *wba_a, const wasmer_byte_array *wba_b) {
+    return wba_a->bytes_len == wba_b->bytes_len
+        && (memcmp(wba_a->bytes, wba_b->bytes, wba_a->bytes_len) == 0);
+}
 
 
 uint8_t *read_file(ngx_pool_t *pool, const char *fname, uint32_t *out_len);
