@@ -357,7 +357,7 @@ wasmer_result_t maybe_call(wngx_instance* inst, wngx_export_id method) {
 
     const wasmer_export_func_t *func = inst->w_funcs[method];
     if (inst->w_funcs[method] == NULL)
-        return WASMER_ERROR;
+        return WASMER_OK;       /* not having a method is not an error */
 
     return wasmer_export_func_call(func,
                                    params, sizeof_array(params),
