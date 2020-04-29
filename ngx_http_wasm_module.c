@@ -25,6 +25,7 @@ typedef struct named_instance {
     ngx_str_t module_path;
     ngx_str_t instance_name;
     wngx_instance *instance;
+    ngx_uint_t index;
 } named_instance;
 
 typedef struct ngx_http_wasm_main_conf_t {
@@ -43,7 +44,7 @@ typedef struct ngx_http_wasm_conf_t {
 
 #define ngxarray_for(iv,pv,a, t)   \
     ngx_uint_t iv; \
-    const t * pv; \
+    t * pv; \
     for(iv=0,pv=(a)->elts; iv<(a)->nelts; iv++, pv++)
 
 
@@ -52,13 +53,13 @@ static void log_cf(const ngx_conf_t *cf, const char *msg, const void *p) {
     ngx_log_stderr(NGX_LOG_STDERR, "%s(%p) :: cf: %p, #args: %d, module_type: %Xd, cmd_type: %Xd",
         msg, p, cf, cf->args->nelts,  cf->module_type, cf->cmd_type );
 
-    ngxarray_for(i, arg, cf->args, ngx_str_t){
+    ngxarray_for(i, arg, cf->args, const ngx_str_t){
         ngx_log_stderr(NGX_LOG_STDERR, "   arg #%d: %V", i, arg);
     }
 }
 
 void maybe_call_each(const ngx_array_t *instances, wngx_export_id method) {
-    ngxarray_for(i, inst, instances, named_instance) {
+    ngxarray_for(i, inst, instances, const named_instance) {
         if (inst->instance != NULL) {
             d("will call %V:%V instance", &inst->module_path, &inst->instance_name);
             wasmer_result_t call_result = maybe_call(inst->instance, method);
@@ -228,7 +229,7 @@ static void get_named_instance(named_instance *inst, ngx_array_t *instances, ngx
 
     if (inst->instance_name.data != NULL) {
         /* has a name, search in old named instances */
-        ngxarray_for(i, old_inst, instances, named_instance) {
+        ngxarray_for(i, old_inst, instances, const named_instance) {
             d("old_inst: %p (%V:%V)", old_inst, &old_inst->module_path, &old_inst->instance_name);
             if (streq(&old_inst->instance_name, &inst->instance_name)
                 && streq(&old_inst->module_path, &inst->module_path)
@@ -244,7 +245,7 @@ static void get_named_instance(named_instance *inst, ngx_array_t *instances, ngx
     wngx_module *mod = NULL;
 
     /* search in loaded modules */
-    ngxarray_for(i, old_mod, modules, loaded_module) {
+    ngxarray_for(i, old_mod, modules, const loaded_module) {
         d("loaded_module: %p (%V)", old_mod, &old_mod->module_path);
         if (streq(&old_mod->module_path, &inst->module_path)) {
             d("found!");
@@ -311,10 +312,10 @@ static char *ngx_http_wasm_merge_loc_conf(ngx_conf_t *cf, void *parent, void *ch
 
     ngxarray_for(i, inst, &conf->instances, named_instance) {
         d("get: %V:%V", &inst->module_path, &inst->instance_name);
-        get_named_instance((named_instance *)inst, &root->instances, &root->modules);
+        get_named_instance(inst, &root->instances, &root->modules);
     }
 
-    ngxarray_for(_, inst_, &conf->instances, named_instance) {
+    ngxarray_for(_, inst_, &conf->instances, const named_instance) {
         d("instance %V:%V -> %p", &inst_->module_path, &inst_->instance_name, inst_->instance);
     }
     d("---");
