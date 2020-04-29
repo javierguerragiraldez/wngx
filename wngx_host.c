@@ -237,7 +237,7 @@ wngx_module * wngx_host_load_module(const ngx_str_t* path) {
         ngx_free(mod);
         return NULL;
     }
-//     show_module_info(mod->w_module);
+
     {
         /* record export index of the funcs we need */
 
@@ -296,7 +296,6 @@ wngx_instance * wngx_host_load_instance(const wngx_module* mod) {
             }
         }
     }
-//     show_instance_info(inst->w_instance);
 
     return inst;
 }

@@ -3,7 +3,6 @@
 
 #define sizeof_array(x) (sizeof(x) / sizeof((x)[0]))
 #define LIT_BYTEARRAY(s) { .bytes = (const uint8_t*)(s), .bytes_len=sizeof(s)-1 }
-// #define STR_BYTEARRAY(s) { .bytes = (const uint8_t*)(s), .bytes_len=strlen(s) }
 
 
 inline int bytearray_eq(const wasmer_byte_array *wba_a, const wasmer_byte_array *wba_b) {

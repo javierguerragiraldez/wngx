@@ -52,9 +52,6 @@ static void log_cf(const ngx_conf_t *cf, const char *msg, const void *p) {
     ngx_log_stderr(NGX_LOG_STDERR, "%s(%p) :: cf: %p, #args: %d, module_type: %Xd, cmd_type: %Xd",
         msg, p, cf, cf->args->nelts,  cf->module_type, cf->cmd_type );
 
-    /*ngx_str_t *args = cf->args->elts;
-    ngx_uint_t i;
-    for (i = 0; i < cf->args->nelts; i++)*/
     ngxarray_for(i, arg, cf->args, ngx_str_t){
         ngx_log_stderr(NGX_LOG_STDERR, "   arg #%d: %V", i, arg);
     }
@@ -231,9 +228,6 @@ static void get_named_instance(named_instance *inst, ngx_array_t *instances, ngx
 
     if (inst->instance_name.data != NULL) {
         /* has a name, search in old named instances */
-//         ngxarray_to_cptr(p, instances, named_instance);
-//         ngx_uint_t i;
-//         for (i = 0; i < instances->nelts; i++) {
         ngxarray_for(i, old_inst, instances, named_instance) {
             d("old_inst: %p (%V:%V)", old_inst, &old_inst->module_path, &old_inst->instance_name);
             if (streq(&old_inst->instance_name, &inst->instance_name)
@@ -250,9 +244,6 @@ static void get_named_instance(named_instance *inst, ngx_array_t *instances, ngx
     wngx_module *mod = NULL;
 
     /* search in loaded modules */
-//     ngxarray_to_cptr(p, modules, loaded_module);
-//     ngx_uint_t i;
-//     for (i = 0; i < modules->nelts; i++) {
     ngxarray_for(i, old_mod, modules, loaded_module) {
         d("loaded_module: %p (%V)", old_mod, &old_mod->module_path);
         if (streq(&old_mod->module_path, &inst->module_path)) {
@@ -318,16 +309,11 @@ static char *ngx_http_wasm_merge_loc_conf(ngx_conf_t *cf, void *parent, void *ch
                    root, root->instances.nelts, root->modules.nelts, prev,
                    conf, conf->instances.nelts);
 
-//     ngxarray_to_cptr(p, &conf->instances, named_instance);
-//     ngx_uint_t i;
-//     for (i = 0; i < conf->instances.nelts; i++) {
     ngxarray_for(i, inst, &conf->instances, named_instance) {
         d("get: %V:%V", &inst->module_path, &inst->instance_name);
         get_named_instance((named_instance *)inst, &root->instances, &root->modules);
     }
 
-//     ngxarray_to_cptr(p2, &conf->instances, named_instance);
-//     for (i = 0; i < conf->instances.nelts; i++) {
     ngxarray_for(_, inst_, &conf->instances, named_instance) {
         d("instance %V:%V -> %p", &inst_->module_path, &inst_->instance_name, inst_->instance);
     }
