@@ -10,9 +10,9 @@ typedef enum wngx_export_id {
     wngx_req_rewrite,
     wngx_req_access,
     wngx_req_content,
-    wngx_req_header_filter,
-    wngx_req_body_filter,
-    wngx_req_log,
+    wngx_res_header_filter,
+    wngx_res_body_filter,
+    wngx_on_log,
 
     __wngx_num_export_ids__,
 } wngx_export_id;

@@ -41,32 +41,47 @@ typedef struct ngx_http_wasm_conf_t {
 #define d(...) ngx_log_stderr(NGX_LOG_STDERR, __VA_ARGS__)
 #define r_log_debug(...) ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, __VA_ARGS__)
 
-#define elts_i_ptr(v, a, t, i)  const t *v = &((const t *)(a)->elts)[i]
+// #define ngxarray_to_cptr(v, a, t)   const t *v = (const t *)((a)->elts)
+#define ngxarray_for(iv,pv,a, t)   \
+    ngx_uint_t iv; \
+    const t * pv; \
+    for(iv=0,pv=(a)->elts; iv<(a)->nelts; iv++, pv++)
+
 
 
 static void log_cf(const ngx_conf_t *cf, const char *msg, const void *p) {
     ngx_log_stderr(NGX_LOG_STDERR, "%s(%p) :: cf: %p, #args: %d, module_type: %Xd, cmd_type: %Xd",
         msg, p, cf, cf->args->nelts,  cf->module_type, cf->cmd_type );
 
-    ngx_str_t *args = cf->args->elts;
+    /*ngx_str_t *args = cf->args->elts;
     ngx_uint_t i;
-    for (i = 0; i < cf->args->nelts; i++) {
-        ngx_log_stderr(NGX_LOG_STDERR, "   arg #%d: %V", i, &args[i]);
+    for (i = 0; i < cf->args->nelts; i++)*/
+    ngxarray_for(i, arg, cf->args, ngx_str_t){
+        ngx_log_stderr(NGX_LOG_STDERR, "   arg #%d: %V", i, arg);
     }
 }
 
 void maybe_call_each(const ngx_array_t *instances, wngx_export_id method) {
-    ngx_uint_t i;
-    for (i = 0; i < instances->nelts; ++i) {
-        elts_i_ptr(inst, instances, named_instance, i);
-
+    ngxarray_for(i, inst, instances, named_instance) {
         if (inst->instance != NULL) {
+            d("will call %V:%V instance", &inst->module_path, &inst->instance_name);
             wasmer_result_t call_result = maybe_call(inst->instance, method);
             if (call_result != WASMER_OK) {
-                log_wasmer_error("error calling '%s' method");
+                log_wasmer_error("error calling XX method");
             }
         }
     }
+
+//     ngxarray_to_cptr(p, instances, named_instance);
+//     ngx_uint_t i;
+//     for (i = 0; i < instances->nelts; ++i) {
+//         if (p[i].instance != NULL) {
+//             wasmer_result_t call_result = maybe_call(p[i].instance, method);
+//             if (call_result != WASMER_OK) {
+//                 log_wasmer_error("error calling '%s' method");
+//             }
+//         }
+//     }
 }
 
 /* handlers */
@@ -112,7 +127,7 @@ static ngx_int_t ngx_http_wasm_header_filter(ngx_http_request_t *r) {
         r_log_debug("no local conf ??");
         return NGX_ERROR;
     }
-    maybe_call_each(&wlcf->instances, wngx_req_header_filter);
+    maybe_call_each(&wlcf->instances, wngx_res_header_filter);
 
     return ngx_http_next_header_filter (r);
 }
@@ -126,7 +141,7 @@ static ngx_int_t ngx_http_wasm_body_filter(ngx_http_request_t *r, ngx_chain_t *i
         r_log_debug("no local conf ??");
         return NGX_ERROR;
     }
-    maybe_call_each(&wlcf->instances, wngx_req_body_filter);
+    maybe_call_each(&wlcf->instances, wngx_res_body_filter);
 
     return ngx_http_next_body_filter(r, in);
 }
@@ -138,7 +153,7 @@ static ngx_int_t ngx_http_wasm_log_handler ( ngx_http_request_t* r ) {
         r_log_debug("no local conf ??");
         return NGX_ERROR;
     }
-    maybe_call_each(&wlcf->instances, wngx_req_log);
+    maybe_call_each(&wlcf->instances, wngx_on_log);
 
     return NGX_DECLINED;
 }
@@ -228,9 +243,10 @@ static void get_named_instance(named_instance *inst, ngx_array_t *instances, ngx
 
     if (inst->instance_name.data != NULL) {
         /* has a name, search in old named instances */
-        ngx_uint_t i;
-        for (i = 0; i < instances->nelts; i++) {
-            elts_i_ptr(old_inst, instances, named_instance, i);
+//         ngxarray_to_cptr(p, instances, named_instance);
+//         ngx_uint_t i;
+//         for (i = 0; i < instances->nelts; i++) {
+        ngxarray_for(i, old_inst, instances, named_instance) {
             d("old_inst: %p (%V:%V)", old_inst, &old_inst->module_path, &old_inst->instance_name);
             if (streq(&old_inst->instance_name, &inst->instance_name)
                 && streq(&old_inst->module_path, &inst->module_path)
@@ -246,9 +262,10 @@ static void get_named_instance(named_instance *inst, ngx_array_t *instances, ngx
     wngx_module *mod = NULL;
 
     /* search in loaded modules */
-    ngx_uint_t i;
-    for (i = 0; i < modules->nelts; i++) {
-        elts_i_ptr(old_mod, modules, loaded_module, i);
+//     ngxarray_to_cptr(p, modules, loaded_module);
+//     ngx_uint_t i;
+//     for (i = 0; i < modules->nelts; i++) {
+    ngxarray_for(i, old_mod, modules, loaded_module) {
         d("loaded_module: %p (%V)", old_mod, &old_mod->module_path);
         if (streq(&old_mod->module_path, &inst->module_path)) {
             d("found!");
@@ -315,16 +332,18 @@ static char *ngx_http_wasm_merge_loc_conf(ngx_conf_t *cf, void *parent, void *ch
                    root, root->instances.nelts, root->modules.nelts, prev,
                    conf, conf->instances.nelts);
 
-    ngx_uint_t i;
-    for (i = 0; i < conf->instances.nelts; i++) {
-        elts_i_ptr(inst, &conf->instances, named_instance, i);
+//     ngxarray_to_cptr(p, &conf->instances, named_instance);
+//     ngx_uint_t i;
+//     for (i = 0; i < conf->instances.nelts; i++) {
+    ngxarray_for(i, inst, &conf->instances, named_instance) {
         d("get: %V:%V", &inst->module_path, &inst->instance_name);
         get_named_instance((named_instance *)inst, &root->instances, &root->modules);
     }
 
-    for (i = 0; i < conf->instances.nelts; i++) {
-        elts_i_ptr(inst, &conf->instances, named_instance, i);
-        d("instance %V:%V -> %p", &inst->module_path, &inst->instance_name, inst->instance);
+//     ngxarray_to_cptr(p2, &conf->instances, named_instance);
+//     for (i = 0; i < conf->instances.nelts; i++) {
+    ngxarray_for(_, inst_, &conf->instances, named_instance) {
+        d("instance %V:%V -> %p", &inst_->module_path, &inst_->instance_name, inst_->instance);
     }
     d("---");
 

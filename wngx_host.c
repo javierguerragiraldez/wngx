@@ -18,9 +18,9 @@ static wasmer_byte_array export_func_names[] = {
     LIT_BYTEARRAY("req_rewrite"),
     LIT_BYTEARRAY("req_access"),
     LIT_BYTEARRAY("req_content"),
-    LIT_BYTEARRAY("req_header_filter"),
-    LIT_BYTEARRAY("req_body_filter"),
-    LIT_BYTEARRAY("req_log"),
+    LIT_BYTEARRAY("res_header_filter"),
+    LIT_BYTEARRAY("res_body_filter"),
+    LIT_BYTEARRAY("on_log"),
 };
 
 
@@ -29,45 +29,45 @@ static wasmer_byte_array export_func_names[] = {
 // #define d(...) ngx_log_debug(NGX_LOG_DEBUG_HTTP, ngx_cycle->log, 0, __VA_ARGS__)
 #define d(...) ngx_log_stderr(NGX_LOG_STDERR, __VA_ARGS__)
 
-// static void show_module_info(const wasmer_module_t *module) {
-//     wasmer_export_descriptors_t *descs;
-//
-//     wasmer_export_descriptors(module, &descs);
-//     int ndescs = wasmer_export_descriptors_len(descs);
-//
-//     int i;
-//     for (i = 0; i < ndescs; i++) {
-//         wasmer_export_descriptor_t *desc = wasmer_export_descriptors_get(descs, i);
-//         wasmer_byte_array expname = wasmer_export_descriptor_name(desc);
-//         wasmer_import_export_kind kind = wasmer_export_descriptor_kind(desc);
-//         d("module export: %*s, kind: %s (%d)", expname.bytes_len, expname.bytes,
-//             kind == WASM_FUNCTION ? "Function" :
-//             kind == WASM_GLOBAL ? "Global" :
-//             kind == WASM_MEMORY ? "Memory" :
-//             kind == WASM_TABLE ? "Table" :
-//                 "unknown", kind );
-//     }
-// }
+static void show_module_info(const wasmer_module_t *module) {
+    wasmer_export_descriptors_t *descs;
 
-// static void show_instance_info(wasmer_instance_t *instance) {
-//     wasmer_exports_t *exports;
-//
-//     wasmer_instance_exports(instance, &exports);
-//     int nexps = wasmer_exports_len(exports);
-//
-//     int i;
-//     for (i = 0; i < nexps; i++) {
-//         wasmer_export_t *exp = wasmer_exports_get(exports, i);
-//         wasmer_byte_array expname = wasmer_export_name(exp);
-//         wasmer_import_export_kind kind = wasmer_export_kind(exp);
-//         d("instance export %*s, kind %s (%d)", expname.bytes_len, expname.bytes,
-//             kind == WASM_FUNCTION ? "Function" :
-//             kind == WASM_GLOBAL ? "Global" :
-//             kind == WASM_MEMORY ? "Memory" :
-//             kind == WASM_TABLE ? "Table" :
-//                 "unknown", kind );
-//     }
-// }
+    wasmer_export_descriptors(module, &descs);
+    int ndescs = wasmer_export_descriptors_len(descs);
+
+    int i;
+    for (i = 0; i < ndescs; i++) {
+        wasmer_export_descriptor_t *desc = wasmer_export_descriptors_get(descs, i);
+        wasmer_byte_array expname = wasmer_export_descriptor_name(desc);
+        wasmer_import_export_kind kind = wasmer_export_descriptor_kind(desc);
+        d("module export: %*s, kind: %s (%d)", expname.bytes_len, expname.bytes,
+            kind == WASM_FUNCTION ? "Function" :
+            kind == WASM_GLOBAL ? "Global" :
+            kind == WASM_MEMORY ? "Memory" :
+            kind == WASM_TABLE ? "Table" :
+                "unknown", kind );
+    }
+}
+
+static void show_instance_info(wasmer_instance_t *instance) {
+    wasmer_exports_t *exports;
+
+    wasmer_instance_exports(instance, &exports);
+    int nexps = wasmer_exports_len(exports);
+
+    int i;
+    for (i = 0; i < nexps; i++) {
+        wasmer_export_t *exp = wasmer_exports_get(exports, i);
+        wasmer_byte_array expname = wasmer_export_name(exp);
+        wasmer_import_export_kind kind = wasmer_export_kind(exp);
+        d("instance export %*s, kind %s (%d)", expname.bytes_len, expname.bytes,
+            kind == WASM_FUNCTION ? "Function" :
+            kind == WASM_GLOBAL ? "Global" :
+            kind == WASM_MEMORY ? "Memory" :
+            kind == WASM_TABLE ? "Table" :
+                "unknown", kind );
+    }
+}
 
 /* symbols imported by WASM module */
 
@@ -131,7 +131,7 @@ static const char *dup_wasmer_error() {
 void log_wasmer_error(const char *msg) {
     const char *w_err = dup_wasmer_error();
     ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "%s: %s", msg, w_err);
-    free((void*)w_err);
+    ngx_free((void*)w_err);
 }
 
 static uint32_t wngx_get_uri(
@@ -278,7 +278,7 @@ wngx_module * wngx_host_load_module(const ngx_str_t* path) {
         ngx_free(mod);
         return NULL;
     }
-//     show_module_info(mod->w_module);
+    show_module_info(mod->w_module);
     {
         /* record export index of the funcs we need */
 
@@ -327,7 +327,7 @@ wngx_instance * wngx_host_load_instance(const wngx_module* mod) {
         log_wasmer_error("instantiating WASM module");
         return NULL;
     }
-//     show_instance_info(inst->w_instance);
+    show_instance_info(inst->w_instance);
     {
         /* record instance functions we need */
         wasmer_exports_t *exports;
@@ -343,9 +343,9 @@ wngx_instance * wngx_host_load_instance(const wngx_module* mod) {
         }
         wasmer_exports_destroy(exports);
 
-//         for (id = 0; id < sizeof_array(inst->w_funcs); id++) {
-//             d("func: %d -> %p", id, inst->w_funcs[id]);
-//         }
+        for (id = 0; id < sizeof_array(inst->w_funcs); id++) {
+            d("func: %d -> %p", id, inst->w_funcs[id]);
+        }
     }
 
     return inst;
@@ -355,9 +355,11 @@ wasmer_result_t maybe_call(wngx_instance* inst, wngx_export_id method) {
     wasmer_value_t params[] = {};
     wasmer_value_t results[] = {};
 
+    d("inst: %p, method (%d)'%*s'", inst, method, export_func_names[method].bytes_len, export_func_names[method].bytes);
     const wasmer_export_func_t *func = inst->w_funcs[method];
-    if (inst->w_funcs[method] == NULL)
+    if (func == NULL)
         return WASMER_OK;       /* not having a method is not an error */
+    d("func: %p", func);
 
     return wasmer_export_func_call(func,
                                    params, sizeof_array(params),
