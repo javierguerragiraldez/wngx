@@ -24,6 +24,7 @@ typedef struct wngx_module {
 
 typedef struct wngx_instance {
     wasmer_instance_t *w_instance;
+    wasmer_exports_t *w_exports;
     const wasmer_export_func_t *w_funcs[__wngx_num_export_ids__];
 } wngx_instance;
 

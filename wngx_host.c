@@ -26,48 +26,7 @@ static wasmer_byte_array export_func_names[] = {
 
 /* misc functions */
 
-// #define d(...) ngx_log_debug(NGX_LOG_DEBUG_HTTP, ngx_cycle->log, 0, __VA_ARGS__)
 #define d(...) ngx_log_stderr(NGX_LOG_STDERR, __VA_ARGS__)
-
-static void show_module_info(const wasmer_module_t *module) {
-    wasmer_export_descriptors_t *descs;
-
-    wasmer_export_descriptors(module, &descs);
-    int ndescs = wasmer_export_descriptors_len(descs);
-
-    int i;
-    for (i = 0; i < ndescs; i++) {
-        wasmer_export_descriptor_t *desc = wasmer_export_descriptors_get(descs, i);
-        wasmer_byte_array expname = wasmer_export_descriptor_name(desc);
-        wasmer_import_export_kind kind = wasmer_export_descriptor_kind(desc);
-        d("module export: %*s, kind: %s (%d)", expname.bytes_len, expname.bytes,
-            kind == WASM_FUNCTION ? "Function" :
-            kind == WASM_GLOBAL ? "Global" :
-            kind == WASM_MEMORY ? "Memory" :
-            kind == WASM_TABLE ? "Table" :
-                "unknown", kind );
-    }
-}
-
-static void show_instance_info(wasmer_instance_t *instance) {
-    wasmer_exports_t *exports;
-
-    wasmer_instance_exports(instance, &exports);
-    int nexps = wasmer_exports_len(exports);
-
-    int i;
-    for (i = 0; i < nexps; i++) {
-        wasmer_export_t *exp = wasmer_exports_get(exports, i);
-        wasmer_byte_array expname = wasmer_export_name(exp);
-        wasmer_import_export_kind kind = wasmer_export_kind(exp);
-        d("instance export %*s, kind %s (%d)", expname.bytes_len, expname.bytes,
-            kind == WASM_FUNCTION ? "Function" :
-            kind == WASM_GLOBAL ? "Global" :
-            kind == WASM_MEMORY ? "Memory" :
-            kind == WASM_TABLE ? "Table" :
-                "unknown", kind );
-    }
-}
 
 /* symbols imported by WASM module */
 
@@ -278,7 +237,7 @@ wngx_module * wngx_host_load_module(const ngx_str_t* path) {
         ngx_free(mod);
         return NULL;
     }
-    show_module_info(mod->w_module);
+//     show_module_info(mod->w_module);
     {
         /* record export index of the funcs we need */
 
@@ -301,12 +260,7 @@ wngx_module * wngx_host_load_module(const ngx_str_t* path) {
             }
         }
         wasmer_export_descriptors_destroy(descs);
-
-//         unsigned ui;
-//         for (ui = 0; ui < sizeof_array(mod->export_index); ui++)
-//             d("export_index %d -> %d", ui, mod->export_index[ui]);
     }
-
 
     return mod;
 }
@@ -327,26 +281,22 @@ wngx_instance * wngx_host_load_instance(const wngx_module* mod) {
         log_wasmer_error("instantiating WASM module");
         return NULL;
     }
-    show_instance_info(inst->w_instance);
+    wasmer_instance_context_data_set(inst->w_instance, inst);
+
     {
         /* record instance functions we need */
-        wasmer_exports_t *exports;
-        wasmer_instance_exports(inst->w_instance, &exports);
+        wasmer_instance_exports(inst->w_instance, &inst->w_exports);
         wngx_export_id id;
         for (id = 0; id < __wngx_num_export_ids__; id++) {
             if (mod->export_index[id] != 0) {
                 /* TODO: get a better non-index than zero */
-                wasmer_export_t *exp = wasmer_exports_get(exports, mod->export_index[id]);
+                wasmer_export_t *exp = wasmer_exports_get(inst->w_exports, mod->export_index[id]);
                 if (wasmer_export_kind(exp) == WASM_FUNCTION)
                     inst->w_funcs[id] = wasmer_export_to_func(exp);
             }
         }
-        wasmer_exports_destroy(exports);
-
-        for (id = 0; id < sizeof_array(inst->w_funcs); id++) {
-            d("func: %d -> %p", id, inst->w_funcs[id]);
-        }
     }
+//     show_instance_info(inst->w_instance);
 
     return inst;
 }
@@ -355,7 +305,6 @@ wasmer_result_t maybe_call(wngx_instance* inst, wngx_export_id method) {
     wasmer_value_t params[] = {};
     wasmer_value_t results[] = {};
 
-    d("inst: %p, method (%d)'%*s'", inst, method, export_func_names[method].bytes_len, export_func_names[method].bytes);
     const wasmer_export_func_t *func = inst->w_funcs[method];
     if (func == NULL)
         return WASMER_OK;       /* not having a method is not an error */

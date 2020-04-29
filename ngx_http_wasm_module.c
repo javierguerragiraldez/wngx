@@ -41,7 +41,6 @@ typedef struct ngx_http_wasm_conf_t {
 #define d(...) ngx_log_stderr(NGX_LOG_STDERR, __VA_ARGS__)
 #define r_log_debug(...) ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, __VA_ARGS__)
 
-// #define ngxarray_to_cptr(v, a, t)   const t *v = (const t *)((a)->elts)
 #define ngxarray_for(iv,pv,a, t)   \
     ngx_uint_t iv; \
     const t * pv; \
@@ -71,17 +70,6 @@ void maybe_call_each(const ngx_array_t *instances, wngx_export_id method) {
             }
         }
     }
-
-//     ngxarray_to_cptr(p, instances, named_instance);
-//     ngx_uint_t i;
-//     for (i = 0; i < instances->nelts; ++i) {
-//         if (p[i].instance != NULL) {
-//             wasmer_result_t call_result = maybe_call(p[i].instance, method);
-//             if (call_result != WASMER_OK) {
-//                 log_wasmer_error("error calling '%s' method");
-//             }
-//         }
-//     }
 }
 
 /* handlers */
