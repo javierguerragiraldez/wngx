@@ -290,18 +290,16 @@ static void get_named_instance(named_instance *inst, ngx_array_t *instances, ngx
         return;
     }
 
-    if (inst->instance_name.data != NULL) {
-        /* has a name, register it */
-        named_instance *new_inst = ngx_array_push(instances);
-        if (new_inst == NULL) {
-            ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "can't push named module %V:%V",
-                          &inst->module_path, &inst->instance_name);
-            return;
-        }
-        new_inst->module_path = inst->module_path;
-        new_inst->instance_name = inst->instance_name;
-        new_inst->instance = inst->instance;
+    /* register it */
+    named_instance *new_inst = ngx_array_push(instances);
+    if (new_inst == NULL) {
+        ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "can't push named module %V:%V",
+                        &inst->module_path, &inst->instance_name);
+        return;
     }
+    new_inst->module_path = inst->module_path;
+    new_inst->instance_name = inst->instance_name;
+    new_inst->instance = inst->instance;
 }
 
 static char *ngx_http_wasm_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
