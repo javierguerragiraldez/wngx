@@ -3,9 +3,8 @@ const wngx = @import("wngx.zig");
 
 var req : ?wngx.Request = null;
 
-export fn rewrite() void {}
 
-export fn access() void {
+export fn req_access() void {
     req = wngx.Request.init(wngx.default_allocator) catch return;
     var r = req orelse return;
 
@@ -16,10 +15,6 @@ export fn access() void {
     }
 }
 
-export fn header_filter() void {
+export fn res_header_filter() void {
     wngx.add_header("X-zig-here", req.?.uri);
 }
-
-export fn body_filter() void {}
-
-export fn do_log() void {}

@@ -28,6 +28,8 @@ static wasmer_byte_array export_func_names[] = {
 
 #define d(...) ngx_log_stderr(NGX_LOG_STDERR, __VA_ARGS__)
 
+#define current_req(wctx) ({const wngx_instance *inst = wasmer_instance_context_data_get(wctx); inst ? inst->current_req : NULL;})
+
 /* symbols imported by WASM module */
 
 static void wngx_log(
@@ -35,10 +37,8 @@ static void wngx_log(
     uint32_t level,
     uint32_t msg, uint32_t msg_len
 ) {
-    const ngx_http_request_t *r = wasmer_instance_context_data_get(wctx);
+    const ngx_http_request_t *r = current_req(wctx);
     if (!r) return;
-
-//     ngx_http_wasm_conf_t *wlcf = ngx_http_get_module_loc_conf(r, ngx_http_wasm_module);
 
     const wasmer_memory_t *mem_ctx = wasmer_instance_context_memory(wctx, 0);
     if (!mem_ctx) return;
@@ -47,12 +47,11 @@ static void wngx_log(
     if (!mem) return;
 
     ngx_str_t msg_str = { .len = msg_len, .data = mem + msg };
-//     ngx_log_debug(level, r->connection->log, 0, "module %V: '%V'", &wlcf->wasm_path, &msg_str);
     ngx_log_debug(level, r->connection->log, 0, "module -: '%V'", &msg_str);
 }
 
 static uint32_t wngx_request_size ( const wasmer_instance_context_t* wctx ) {
-    const ngx_http_request_t *r = wasmer_instance_context_data_get(wctx);
+    const ngx_http_request_t *r = current_req(wctx);
     if (!r) return 0;
 
     return request_size(r);
@@ -62,7 +61,7 @@ static void wngx_get_request (
     const wasmer_instance_context_t* wctx,
     uint32_t buff_off, uint32_t buff_size
 ) {
-    const ngx_http_request_t *r = wasmer_instance_context_data_get(wctx);
+    const ngx_http_request_t *r = current_req(wctx);
     if (!r) return;
 
     const wasmer_memory_t *mem_ctx = wasmer_instance_context_memory(wctx, 0);
@@ -97,7 +96,7 @@ static uint32_t wngx_get_uri(
     const wasmer_instance_context_t *wctx,
     uint32_t buf_off, uint32_t buff_sz
 ) {
-    ngx_http_request_t *r = wasmer_instance_context_data_get(wctx);
+    ngx_http_request_t *r = current_req(wctx);
     if (!r) return 0;
 
     const wasmer_memory_t *mem = wasmer_instance_context_memory(wctx, 0);
@@ -117,7 +116,7 @@ static void wngx_add_header (
     uint32_t key_off, uint32_t key_len,
     uint32_t val_off, uint32_t val_len
 ) {
-    ngx_http_request_t *r = wasmer_instance_context_data_get(wctx);
+    ngx_http_request_t *r = current_req(wctx);
     if (!r) return;
 
     const wasmer_memory_t *mem = wasmer_instance_context_memory(wctx, 0);
@@ -303,6 +302,10 @@ wngx_instance * wngx_host_load_instance(const wngx_module* mod) {
 wasmer_result_t maybe_call(wngx_instance* inst, wngx_export_id method) {
     wasmer_value_t params[] = {};
     wasmer_value_t results[] = {};
+
+    if (inst->current_req != NULL) {
+        ngx_http_set_ctx(inst->current_req, inst, ngx_http_wasm_module);
+    }
 
     const wasmer_export_func_t *func = inst->w_funcs[method];
     if (func == NULL)
