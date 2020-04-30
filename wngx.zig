@@ -52,6 +52,8 @@ const w_request = extern struct {
 };
 
 pub const Request = struct {
+    const HeaderMap = std.StringHashMap([]const u8);
+
     request_line: []const u8,
     method: []const u8,
     uri: []const u8,
@@ -60,8 +62,6 @@ pub const Request = struct {
     uri_path: []const u8,
     uri_args: []const u8,
     uri_exten: []const u8,
-
-    const HeaderMap = std.StringHashMap([]const u8);
 
     headers: HeaderMap,
 
