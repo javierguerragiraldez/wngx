@@ -80,7 +80,7 @@ static ngx_int_t ngx_http_wasm_rewrite_handler ( ngx_http_request_t* r ) {
         r_log_debug("no local conf ??");
         return NGX_ERROR;
     }
-    maybe_call_each(&wlcf->instances, wngx_req_rewrite, r);
+    maybe_call_each(&wlcf->instances, wngx_on_req_rewrite, r);
 
     return NGX_DECLINED;
 }
@@ -91,7 +91,7 @@ static ngx_int_t ngx_http_wasm_access_handler ( ngx_http_request_t* r ) {
         r_log_debug("no local conf ??");
         return NGX_ERROR;
     }
-    maybe_call_each(&wlcf->instances, wngx_req_access, r);
+    maybe_call_each(&wlcf->instances, wngx_on_req_access, r);
 
     return NGX_DECLINED;
 }
@@ -102,7 +102,7 @@ static ngx_int_t ngx_http_wasm_content_hanlder ( ngx_http_request_t* r ) {
         r_log_debug("no local conf ??");
         return NGX_ERROR;
     }
-    maybe_call_each(&wlcf->instances, wngx_req_content, r);
+    maybe_call_each(&wlcf->instances, wngx_on_content, r);
 
     return NGX_DECLINED;
 }
@@ -115,7 +115,7 @@ static ngx_int_t ngx_http_wasm_header_filter(ngx_http_request_t *r) {
         r_log_debug("no local conf ??");
         return NGX_ERROR;
     }
-    maybe_call_each(&wlcf->instances, wngx_res_header_filter, r);
+    maybe_call_each(&wlcf->instances, wngx_on_res_header, r);
 
     return ngx_http_next_header_filter (r);
 }
@@ -129,7 +129,7 @@ static ngx_int_t ngx_http_wasm_body_filter(ngx_http_request_t *r, ngx_chain_t *i
         r_log_debug("no local conf ??");
         return NGX_ERROR;
     }
-    maybe_call_each(&wlcf->instances, wngx_res_body_filter, r);
+    maybe_call_each(&wlcf->instances, wngx_on_res_body, r);
 
     return ngx_http_next_body_filter(r, in);
 }

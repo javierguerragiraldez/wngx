@@ -3,8 +3,10 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 
-#include "wngx_structs.h"
+#include "wasmer.h"
+
 #include "utils.h"
+#include "wngx_structs.h"
 
 
 
@@ -114,3 +116,74 @@ void pack_request (
 }
 
 
+
+typedef union registry_entry {
+    void *ptr;
+    unsigned int next_free;
+} registry_entry;
+
+
+ngx_int_t initialize_registry ( wngx_registry* registry, ngx_pool_t* pool ) {
+    if (ngx_array_init(registry, pool, 10, sizeof(registry_entry)) != NGX_OK) {
+        return NGX_ERROR;
+    }
+
+    registry_entry *e0 = ngx_array_push(registry);
+    if (!e0 || e0 != registry->elts) {
+        ngx_log_debug(NGX_LOG_ERR, pool->log, 0, "invalid zero-entry: %p", e0);
+        return NGX_ERROR;
+    }
+
+    e0->next_free = 1;
+    return NGX_OK;
+}
+
+uint32_t registry_add ( wngx_registry* registry, void* p ) {
+    if (registry->nelts < 1) {
+        ngx_log_debug(NGX_LOG_ERR, ngx_cycle->log, 0, "uninitialized registry.");
+    }
+    registry_entry *e0 = registry->elts;
+    unsigned int index = e0->next_free;
+
+    if (e0->next_free == registry->nelts) {
+        /* push at the end */
+        registry_entry *entry = ngx_array_push(registry);
+        e0->next_free = registry->nelts;
+        entry->ptr = p;
+        return index;
+
+    } else if (e0->next_free < registry->nelts) {
+        /* reuse old slot */
+        registry_entry *entry = &((registry_entry*)registry->elts)[index];
+        e0->next_free = entry->next_free;
+        entry->ptr = p;
+        return index;
+    }
+
+    /* wrong! fail! */
+    return 0;
+}
+
+void *registry_get ( const wngx_registry* registry, uint32_t index ) {
+    if (registry->nelts < 1 || index > registry->nelts) {
+        ngx_log_debug(NGX_LOG_ERR, ngx_cycle->log, 0,
+                      "invalid index %d, registry size %d.", index, registry->nelts);
+        return NULL;
+    }
+
+    registry_entry *entry = &((registry_entry*)registry->elts)[index];
+    return entry->ptr;
+}
+
+void registry_delete (wngx_registry* registry, uint32_t index) {
+    if (registry->nelts < 1 || index > registry->nelts) {
+        ngx_log_debug(NGX_LOG_ERR, ngx_cycle->log, 0,
+                      "invalid index %d, registry size %d.", index, registry->nelts);
+    }
+
+    registry_entry *e0 = registry->elts;
+    registry_entry *entry = &((registry_entry*)registry->elts)[index];
+
+    entry->next_free = e0->next_free;
+    e0->next_free = index;
+}

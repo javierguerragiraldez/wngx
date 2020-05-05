@@ -10,6 +10,13 @@ inline int bytearray_eq(const wasmer_byte_array *wba_a, const wasmer_byte_array 
         && (memcmp(wba_a->bytes, wba_b->bytes, wba_a->bytes_len) == 0);
 }
 
+typedef ngx_array_t wngx_registry;
+
+ngx_int_t initialize_registry(wngx_registry *registry, ngx_pool_t *pool);
+uint32_t registry_add(wngx_registry *registry, void *p);
+void *registry_get(const wngx_registry *registry, uint32_t index);
+void registry_delete(wngx_registry *registry, uint32_t index);
+
 
 uint8_t *read_file(ngx_pool_t *pool, const char *fname, uint32_t *out_len);
 

@@ -6,21 +6,23 @@
 #include "wasmer.h"
 
 #include "utils.h"
+#include "wngx_structs.h"
 #include "wngx_host.h"
 #include "ngx_http_wasm_module.h"
 
 static wasmer_byte_array export_func_names[] = {
     LIT_BYTEARRAY("alloc"),
     LIT_BYTEARRAY("free"),
-    LIT_BYTEARRAY("config"),
-    LIT_BYTEARRAY("init_proc"),
-    LIT_BYTEARRAY("req_init"),
-    LIT_BYTEARRAY("req_rewrite"),
-    LIT_BYTEARRAY("req_access"),
-    LIT_BYTEARRAY("req_content"),
-    LIT_BYTEARRAY("res_header_filter"),
-    LIT_BYTEARRAY("res_body_filter"),
+    LIT_BYTEARRAY("on_config"),
+    LIT_BYTEARRAY("on_init_proc"),
+    LIT_BYTEARRAY("on_request"),
+    LIT_BYTEARRAY("on_req_rewrite"),
+    LIT_BYTEARRAY("on_req_access"),
+    LIT_BYTEARRAY("on_content"),
+    LIT_BYTEARRAY("on_res_header"),
+    LIT_BYTEARRAY("on_res_body"),
     LIT_BYTEARRAY("on_log"),
+    LIT_BYTEARRAY("on_callback"),
 };
 
 
@@ -28,7 +30,13 @@ static wasmer_byte_array export_func_names[] = {
 
 #define d(...) ngx_log_stderr(NGX_LOG_STDERR, __VA_ARGS__)
 
-#define current_req(wctx) ({const wngx_instance *inst = wasmer_instance_context_data_get(wctx); inst ? inst->current_req : NULL;})
+#define current_req(wctx) ({ \
+    const wngx_instance *inst = wasmer_instance_context_data_get(wctx); \
+    inst ? inst->current_req : NULL; \
+})
+
+#define wstr2ngx(ws,mem)  { .data = ((ws).d + (mem)), .len = (ws).len }
+
 
 /* symbols imported by WASM module */
 
@@ -75,8 +83,6 @@ static void wngx_get_request (
 
     pack_request(r, mem, buff_off, buff_size);
 }
-
-
 
 
 static const char *dup_wasmer_error() {
@@ -136,6 +142,76 @@ static void wngx_add_header (
     d("wngx_add_header %V / %V", &h->key, &h->value);
 }
 
+
+struct subrequest_handle_data {
+    ngx_http_post_subrequest_t ps;
+    ngx_http_request_t *subreq;
+    wngx_instance *wngx_instance;
+    uint32_t ref;
+    uint32_t req_off;
+    uint32_t cb_off;
+};
+
+static ngx_int_t wngx_handle_post_subrequest(ngx_http_request_t *r, void *data, ngx_int_t rc) {
+    struct subrequest_handle_data *handle_data = data;
+
+    handle_data->wngx_instance->current_req = r;
+    wasmer_result_t wrc = wngx_host_call_back(handle_data->wngx_instance, handle_data->req_off);
+    if (wrc != WASMER_OK) {
+        log_wasmer_error("calling subrequest post callback");
+        return NGX_ERROR;
+    }
+
+    return rc;
+}
+
+static uint32_t wngx_subrequest(const wasmer_instance_context_t *wctx, uint32_t req_off) {
+    struct subrequest_handle_data *handle_data = NULL;
+
+    const wasmer_memory_t *mem = wasmer_instance_context_memory(wctx, 0);
+    if (!mem) goto fail;
+
+    uint8_t *mem_buf = wasmer_memory_data(mem);
+    if (!mem_buf) goto fail;
+
+    wngx_instance *inst = wasmer_instance_context_data_get(wctx);
+    if (!inst) goto fail;
+
+    ngx_http_request_t *r = inst->current_req;
+    if (!r) goto fail;
+
+    wngx_subrequest_params *wsr = (wngx_subrequest_params *)(mem_buf + req_off);
+    ngx_str_t uri = wstr2ngx(wsr->uri, mem_buf);
+    ngx_str_t args = wstr2ngx(wsr->args, mem_buf);
+
+    handle_data = ngx_pcalloc(r->pool, sizeof(struct subrequest_handle_data));
+    if (!handle_data) goto fail;
+
+    handle_data->ps.data = handle_data;
+    handle_data->ps.handler = wngx_handle_post_subrequest;
+    handle_data->wngx_instance = inst;
+    handle_data->req_off = req_off;
+//     handle_data->cb_off = cb_off;
+
+    ngx_int_t rc = ngx_http_subrequest(r, &uri, &args,
+                                       &handle_data->subreq, &handle_data->ps,
+                                       NGX_HTTP_SUBREQUEST_IN_MEMORY);
+    if (rc != NGX_OK) goto fail;
+
+    handle_data->ref = registry_add(&inst->registry, handle_data->subreq);
+    if (!handle_data->ref) goto fail;
+
+    wsr->ref = handle_data->ref;
+    return handle_data->ref;
+
+fail:
+    if (handle_data && handle_data->ref)
+        registry_delete(&inst->registry, handle_data->ref);
+    if (handle_data)
+        ngx_free(handle_data);
+    return 0;
+}
+
 typedef void (*func_t)(void *);
 typedef struct {
     wasmer_byte_array func_name;
@@ -186,7 +262,16 @@ func_defs_t func_defs[] = {
         .returns = {},
         .n_params = 4,
         .params = { WASM_I32, WASM_I32, WASM_I32, WASM_I32 },
-    }
+    },
+    {
+        /* promise *wngx_subrequest(request *r); */
+        .func_name = LIT_BYTEARRAY("wngx_subrequest"),
+        .func = (func_t) wngx_subrequest,
+        .n_returns = 1,
+        .returns = { WASM_I32 },
+        .n_params = 1,
+        .params = { WASM_I32 },
+    },
 };
 
 
@@ -296,6 +381,7 @@ wngx_instance * wngx_host_load_instance(const wngx_module* mod) {
         }
     }
 
+
     return inst;
 }
 
@@ -316,6 +402,27 @@ wasmer_result_t maybe_call(wngx_instance* inst, wngx_export_id method) {
                                    params, sizeof_array(params),
                                    results, sizeof_array(results));
 }
+
+
+wasmer_result_t wngx_host_call_back ( wngx_instance* inst, uint32_t data ) {
+    wasmer_value_t params[] = {
+        { WASM_I32, { .I32 = data } },
+    };
+    wasmer_value_t results[1];
+
+    if (inst->current_req != NULL) {
+        ngx_http_set_ctx(inst->current_req, inst, ngx_http_wasm_module);
+    }
+
+    const wasmer_export_func_t *func = inst->w_funcs[wngx_on_callback];
+    if (!func)
+        return WASMER_ERROR;
+
+    return wasmer_export_func_call(inst->w_funcs[wngx_on_callback],
+                                   params, sizeof_array(params),
+                                   results, sizeof_array(results));
+}
+
 
 
 

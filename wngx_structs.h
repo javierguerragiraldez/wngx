@@ -2,9 +2,9 @@
 #define wngx_structs_h
 
 #include <stdint.h>
-#include "wasmer.h"
+#include <stddef.h>
 
-const size_t ptrsize = sizeof(void*);
+static const size_t ptrsize = sizeof(void*);
 
 #if ptrsize==4
 
@@ -42,6 +42,14 @@ typedef struct wngx_request {
 
     wngx_header headers[];
 } wngx_request;
+
+
+typedef struct wngx_subrequest_params {
+    char_ptr callback;
+    wngx_str uri;
+    wngx_str args;
+    uint32_t ref;
+} wngx_subrequest_params;
 
 
 #endif

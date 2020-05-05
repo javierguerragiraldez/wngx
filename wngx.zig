@@ -9,6 +9,7 @@ extern fn wngx_log(level: u32, msg: [*]const u8, msglen: u32) void;
 extern fn wngx_request_size() u32;
 extern fn wngx_get_request(buf: [*]u8, buflen: u32) void;
 extern fn wngx_add_header(key: [*]const u8, key_len: u32, val: [*]const u8, val_len: u32) void;
+extern fn wngx_subrequest(req: *w_subrequest_params, cb: fn (req: *w_subrequest_params) u32) u32;
 
 pub fn log(level: u32, comptime fmt: []const u8, args: var) void {
     const bufsize = 4096;
@@ -24,6 +25,13 @@ pub fn log(level: u32, comptime fmt: []const u8, args: var) void {
 const w_string = extern struct {
     d: ?[*]u8,
     len: u32,
+
+    fn new(s: []const u8) w_string {
+        return w_string {
+            .d = s.ptr,
+            .len = s.len,
+        };
+    }
 
     fn toSlice(self: w_string) ?[]const u8 {
         const d = self.d orelse return null;
@@ -101,3 +109,45 @@ pub const Request = struct {
 pub fn add_header(key: []const u8, val: []const u8) void {
     wngx_add_header(key.ptr, key.len, val.ptr, val.len);
 }
+
+export fn on_callback( w_d: ?*u8 ) u32 {
+    log(0x100, "on_callback: w_d: {}", .{w_d});
+    const d = @ptrCast(*w_subrequest_params, @alignCast(4, w_d));
+    return d.callback.f(d);
+}
+
+const w_subrequest_params = extern struct {
+    callback: *cb_wrapper,
+    uri: w_string,
+    args: w_string,
+    ref: u32,
+    data: *SubRequest,
+};
+
+const cb_wrapper = struct {
+    f: fn (data: *w_subrequest_params) u32,
+};
+
+pub const SubRequest = struct {
+    ref: u32,
+
+    pub fn fetch(uri: []const u8, args: []const u8) !SubRequest {
+        var self = SubRequest{};
+        var params = w_subrequest_params {
+            .callback = .{ .f = self.callback },
+            .uri = w_string.new(uri),
+            .args = w_string.new(args),
+            .data = self,
+        };
+
+        self.ref = wngx_subrequest(&params);
+        if (self.ref == 0) return error.SubRequestFail;
+
+        return self;
+    }
+
+    pub fn callback(req: *w_subrequest_params) u32 {
+        log(0x100, "callback req: {}, data: {}", .{req, data});
+        return 1;
+    }
+};
