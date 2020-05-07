@@ -28,14 +28,19 @@ static wasmer_byte_array export_func_names[] = {
 
 /* misc functions */
 
-#define d(...) ngx_log_stderr(NGX_LOG_STDERR, __VA_ARGS__)
-
 #define current_req(wctx) ({ \
     const wngx_instance *inst = wasmer_instance_context_data_get(wctx); \
     inst ? inst->current_req : NULL; \
 })
 
 #define wstr2ngx(ws,mem)  { .data = ((ws).d + (mem)), .len = (ws).len }
+
+inline ngx_str_t wstr2ngx_dup(wngx_str ws, uint8_t *mem, ngx_pool_t *pool) {
+    void *buf = ngx_pcalloc(pool, ws.len);
+    ngx_memcpy(buf, mem + ws.d, ws.len);
+
+    return (ngx_str_t){ .data = buf, .len = ws.len };
+}
 
 
 /* symbols imported by WASM module */
@@ -153,15 +158,17 @@ struct subrequest_handle_data {
 };
 
 static ngx_int_t wngx_handle_post_subrequest(ngx_http_request_t *r, void *data, ngx_int_t rc) {
+    d("wngx_handle_post_subrequest (%p / %d)", data, rc);
     struct subrequest_handle_data *handle_data = data;
 
     handle_data->wngx_instance->current_req = r;
     wasmer_result_t wrc = wngx_host_call_back(handle_data->wngx_instance, handle_data->req_off);
     if (wrc != WASMER_OK) {
-        log_wasmer_error("calling subrequest post callback");
+        log_wasmer_error("error calling subrequest post callback");
         return NGX_ERROR;
     }
 
+    d("wngx_handle_post_subrequest done");
     return rc;
 }
 
@@ -181,8 +188,8 @@ static uint32_t wngx_subrequest(const wasmer_instance_context_t *wctx, uint32_t 
     if (!r) goto fail;
 
     wngx_subrequest_params *wsr = (wngx_subrequest_params *)(mem_buf + req_off);
-    ngx_str_t uri = wstr2ngx(wsr->uri, mem_buf);
-    ngx_str_t args = wstr2ngx(wsr->args, mem_buf);
+    ngx_str_t uri = wstr2ngx_dup(wsr->uri, mem_buf, r->pool);
+    ngx_str_t args = wstr2ngx_dup(wsr->args, mem_buf, r->pool);
 
     handle_data = ngx_pcalloc(r->pool, sizeof(struct subrequest_handle_data));
     if (!handle_data) goto fail;
@@ -358,6 +365,11 @@ wngx_instance * wngx_host_load_instance(const wngx_module* mod) {
         return NULL;
     }
 
+    if (initialize_registry(&inst->registry, ngx_cycle->pool) != NGX_OK) {
+        ngx_log_abort(0, "can't inialize registry");
+        return NULL;
+    }
+
     wasmer_result_t instantiate_result = wasmer_module_instantiate(
         mod->w_module, &inst->w_instance, imports, sizeof_array(imports));
     if (instantiate_result != WASMER_OK) {
@@ -396,7 +408,8 @@ wasmer_result_t maybe_call(wngx_instance* inst, wngx_export_id method) {
     const wasmer_export_func_t *func = inst->w_funcs[method];
     if (func == NULL)
         return WASMER_OK;       /* not having a method is not an error */
-    d("func: %p", func);
+    d("func '%*s': %p",
+      export_func_names[method].bytes_len, export_func_names[method].bytes, func);
 
     return wasmer_export_func_call(func,
                                    params, sizeof_array(params),
@@ -415,8 +428,10 @@ wasmer_result_t wngx_host_call_back ( wngx_instance* inst, uint32_t data ) {
     }
 
     const wasmer_export_func_t *func = inst->w_funcs[wngx_on_callback];
-    if (!func)
+    if (!func) {
+        ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "no 'on_callback' method");
         return WASMER_ERROR;
+    }
 
     return wasmer_export_func_call(inst->w_funcs[wngx_on_callback],
                                    params, sizeof_array(params),

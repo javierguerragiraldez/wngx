@@ -1,6 +1,10 @@
 #ifndef wasmdemo_utils_h
 #define wasmdemo_utils_h
 
+#define __FILENAME__ (__builtin_strrchr(__FILE__, '/') ? __builtin_strrchr(__FILE__, '/') + 1 : __FILE__)
+#define d(s,...) ngx_log_stderr(NGX_LOG_STDERR, "[%s:%d] " s, __FILENAME__, __LINE__, ##__VA_ARGS__)
+
+
 #define sizeof_array(x) (sizeof(x) / sizeof((x)[0]))
 #define LIT_BYTEARRAY(s) { .bytes = (const uint8_t*)(s), .bytes_len=sizeof(s)-1 }
 

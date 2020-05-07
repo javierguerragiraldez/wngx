@@ -39,7 +39,6 @@ typedef struct ngx_http_wasm_conf_t {
 
 /* misc funcs */
 
-#define d(...) ngx_log_stderr(NGX_LOG_STDERR, __VA_ARGS__)
 #define r_log_debug(...) ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, __VA_ARGS__)
 
 #define ngxarray_for(iv,pv,a, t)   \
@@ -62,7 +61,6 @@ void maybe_call_each(const ngx_array_t *instances, wngx_export_id method, ngx_ht
     ngxarray_for(i, inst, instances, const named_instance) {
         if (inst->instance != NULL) {
             inst->instance->current_req = r;
-            d("will call %V:%V instance", &inst->module_path, &inst->instance_name);
             wasmer_result_t call_result = maybe_call(inst->instance, method);
             if (call_result != WASMER_OK) {
                 log_wasmer_error("error calling XX method");

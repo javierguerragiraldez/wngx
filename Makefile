@@ -43,7 +43,7 @@ $(NGX_INST): $(NGX_EXE)
 
 
 
-modules: demo_c.wasm demo_req.wasm
+modules: demo_c.wasm demo_req.wasm async_c.wasm
 
 WASM_CC = /opt/wasi-sdk/bin/clang
 WASM_CFLAGS = \

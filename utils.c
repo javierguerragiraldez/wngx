@@ -140,7 +140,7 @@ ngx_int_t initialize_registry ( wngx_registry* registry, ngx_pool_t* pool ) {
 
 uint32_t registry_add ( wngx_registry* registry, void* p ) {
     if (registry->nelts < 1) {
-        ngx_log_debug(NGX_LOG_ERR, ngx_cycle->log, 0, "uninitialized registry.");
+        ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "uninitialized registry.");
     }
     registry_entry *e0 = registry->elts;
     unsigned int index = e0->next_free;

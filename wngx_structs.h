@@ -4,15 +4,28 @@
 #include <stdint.h>
 #include <stddef.h>
 
-static const size_t ptrsize = sizeof(void*);
 
-#if ptrsize==4
+#ifndef WASM_CODE
+static const unsigned ptrsize = sizeof(void*);
+#if ptrsize == 4
+#define WASM_CODE 1
+#else
+#define WASM_CODE 0
+#endif
+#endif
 
-typedef uchar *char_ptr;
+
+#if WASM_CODE
+
+typedef void *wngx_ptr;
+typedef char *char_ptr;
+typedef void (*wngx_func_ptr)();
 
 #else
 
-typedef uint32_t char_ptr;
+typedef uint32_t wngx_ptr;
+typedef wngx_ptr char_ptr;
+typedef wngx_ptr wngx_func_ptr;
 
 #endif
 
@@ -44,8 +57,12 @@ typedef struct wngx_request {
 } wngx_request;
 
 
+struct wngx_callback_pun {
+    wngx_func_ptr callback;
+};
+
 typedef struct wngx_subrequest_params {
-    char_ptr callback;
+    wngx_func_ptr callback;
     wngx_str uri;
     wngx_str args;
     uint32_t ref;

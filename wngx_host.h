@@ -18,6 +18,8 @@ typedef enum wngx_export_id {
     __wngx_num_export_ids__,
 } wngx_export_id;
 
+/* TODO: maybe add module & instance names */
+
 typedef struct wngx_module {
     wasmer_module_t *w_module;
     int export_index[__wngx_num_export_ids__];
