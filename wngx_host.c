@@ -8,6 +8,7 @@
 #include "utils.h"
 #include "wngx_structs.h"
 #include "wngx_host.h"
+#include "wngx_go_host.h"
 #include "ngx_http_wasm_module.h"
 
 static wasmer_byte_array export_func_names[] = {
@@ -219,16 +220,6 @@ fail:
     return 0;
 }
 
-typedef void (*func_t)(void *);
-typedef struct {
-    wasmer_byte_array func_name;
-    func_t func;
-    int n_returns;
-    wasmer_value_tag returns[1];
-    int n_params;
-    wasmer_value_tag params[10];
-} func_defs_t;
-
 func_defs_t func_defs[] = {
     {
         .func_name = LIT_BYTEARRAY("wngx_log"),
@@ -279,30 +270,101 @@ func_defs_t func_defs[] = {
         .n_params = 1,
         .params = { WASM_I32 },
     },
+    { .func = NULL },
 };
 
 
-static wasmer_import_t imports[sizeof_array(func_defs)];
+static size_t count_defs(const func_defs_t *defs) {
+    const func_defs_t *p = defs;
+    while (p->func) {
+        p++;
+    }
+    return p - defs;
+}
 
-static void init_imports() {
-    size_t i;
-    for (i = 0; i < sizeof_array(func_defs); i++) {
-        func_defs_t *fd = &func_defs[i];
+static size_t add_imports(wasmer_import_t *imps, size_t n, wasmer_byte_array modname, const func_defs_t *defs) {
+    d("add_imports: (imps: %p, n: %d, modname: '%*s', defs: %p)",
+        imps, n, modname.bytes_len, modname.bytes, defs);
+    wasmer_import_t *p = imps + n;
+    const func_defs_t *fd = defs;
 
+    while(fd->func) {
         wasmer_import_t imp = {
-            .module_name = LIT_BYTEARRAY("env"),
+            .module_name = modname,
             .import_name = fd->func_name,
             .tag = WASM_FUNCTION,
             .value.func = wasmer_import_func_new(fd->func,
                                                  fd->params, fd->n_params,
                                                  fd->returns, fd->n_returns),
         };
-
-        imports[i] = imp;
+        *p = imp;
+        p++; fd++;
     }
+    return p - imps;
+}
+
+static wasmer_import_t *init_imports(size_t *n_imps) {
+    d("init_imports");
+    size_t num_imports = count_defs(func_defs) + count_defs(go_func_defs);
+    d("num_imports: %d", num_imports);
+    if (n_imps) *n_imps = num_imports;
+
+    wasmer_import_t *p = ngx_calloc(sizeof(wasmer_import_t) * num_imports, ngx_cycle->log);
+    if (!p) {
+        ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "can't allocate imports table");
+        return NULL;
+    }
+
+    wasmer_byte_array env_modname = LIT_BYTEARRAY("env");
+    size_t n = add_imports(p, 0, env_modname, func_defs);
+    d("n: %d", n);
+
+    wasmer_byte_array go_modname = LIT_BYTEARRAY("go");
+    n = add_imports(p, n, go_modname, go_func_defs);
+    d("n: %d", n);
+
+    return p;
 }
 
 /* functions used by other C files */
+
+static const char *kindname(wasmer_import_export_kind kind) {
+    return (kind == WASM_FUNCTION) ? "function" :
+            (kind == WASM_GLOBAL) ? "global" :
+            (kind == WASM_MEMORY) ? "memory" :
+            (kind == WASM_TABLE) ? "table" : "-?-";
+}
+
+static void show_imp_exp(wasmer_module_t *mod) {
+    {
+        wasmer_export_descriptors_t *mod_exports;
+        wasmer_export_descriptors(mod, &mod_exports);
+        int i;
+        for (i=0; i < wasmer_export_descriptors_len(mod_exports); i++) {
+            wasmer_export_descriptor_t *exp_desc = wasmer_export_descriptors_get(mod_exports, i);
+            wasmer_byte_array impname = wasmer_export_descriptor_name(exp_desc);
+            d("export #%i: %*s (%s)",
+              i, impname.bytes_len, impname.bytes,
+              kindname(wasmer_export_descriptor_kind(exp_desc)));
+        }
+
+        wasmer_export_descriptors_destroy(mod_exports);
+    }
+    {
+        wasmer_import_descriptors_t *mod_imports;
+        wasmer_import_descriptors(mod, &mod_imports);
+        unsigned int i;
+        for (i=0; i < wasmer_import_descriptors_len(mod_imports); i++) {
+            wasmer_import_descriptor_t *imp_desc = wasmer_import_descriptors_get(mod_imports, i);
+            wasmer_byte_array impname = wasmer_import_descriptor_name(imp_desc);
+            d("import #%i: %*s (%s)",
+              i, impname.bytes_len, impname.bytes,
+              kindname(wasmer_import_descriptor_kind(imp_desc)));
+        }
+
+        wasmer_import_descriptors_destroy(mod_imports);
+    }
+}
 
 wngx_module * wngx_host_load_module(const ngx_str_t* path) {
     ngx_log_stderr(NGX_LOG_STDERR, "wngx_host_load_module %V", path);
@@ -328,6 +390,8 @@ wngx_module * wngx_host_load_module(const ngx_str_t* path) {
         ngx_free(mod);
         return NULL;
     }
+
+    show_imp_exp(mod->w_module);
 
     {
         /* record export index of the funcs we need */
@@ -357,7 +421,10 @@ wngx_module * wngx_host_load_module(const ngx_str_t* path) {
 }
 
 wngx_instance * wngx_host_load_instance(const wngx_module* mod) {
-    init_imports();
+    static wasmer_import_t *imports = NULL;
+    static size_t num_imports;
+    if (!imports)
+        imports = init_imports(&num_imports);
 
     wngx_instance *inst = ngx_pcalloc(ngx_cycle->pool, sizeof(wngx_instance));
     if (inst == NULL) {
@@ -371,7 +438,7 @@ wngx_instance * wngx_host_load_instance(const wngx_module* mod) {
     }
 
     wasmer_result_t instantiate_result = wasmer_module_instantiate(
-        mod->w_module, &inst->w_instance, imports, sizeof_array(imports));
+        mod->w_module, &inst->w_instance, imports, num_imports);
     if (instantiate_result != WASMER_OK) {
         ngx_log_abort(0, "can't create instance");
         log_wasmer_error("instantiating WASM module");

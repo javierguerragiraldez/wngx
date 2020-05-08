@@ -34,6 +34,18 @@ typedef struct wngx_instance {
 } wngx_instance;
 
 
+typedef void (*func_t)(void *);
+typedef struct {
+    wasmer_byte_array func_name;
+    func_t func;
+    int n_returns;
+    wasmer_value_tag returns[1];
+    int n_params;
+    wasmer_value_tag params[10];
+} func_defs_t;
+
+
+
 void log_wasmer_error(const char *msg);
 
 wngx_module *wngx_host_load_module(const ngx_str_t *path);

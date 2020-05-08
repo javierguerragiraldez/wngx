@@ -11,11 +11,14 @@ NGX_INST=$(NGX_OUTDIR)/sbin/nginx
 SRCS= \
 	ngx_http_wasm_module.c \
 	wngx_host.c \
+	wngx_go_host.c \
 	utils.c
 
 HEADERS= \
+	ngx_http_wasm_module.h \
 	wngx_structs.h \
 	wngx_host.h \
+	wngx_go_host.h \
 	utils.h
 
 
@@ -43,7 +46,7 @@ $(NGX_INST): $(NGX_EXE)
 
 
 
-modules: demo_c.wasm demo_req.wasm async_c.wasm
+modules: demo_c.wasm demo_req.wasm async_c.wasm demo_go.wasm
 
 WASM_CC = /opt/wasi-sdk/bin/clang
 WASM_CFLAGS = \
@@ -59,3 +62,6 @@ WASM_CFLAGS = \
 
 %.wasm: %.zig wngx.zig
 	zig build-lib -target wasm32-freestanding $<
+
+%.wasm: %.go
+	GOOS=js GOARCH=wasm go build -o $@ $<
