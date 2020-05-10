@@ -14,6 +14,7 @@
 
 #include "utils.h"
 #include "wngx_host.h"
+#include "wngx_go_host.h"
 #include "ngx_http_wasm_module.h"
 
 typedef struct loaded_module {
@@ -150,12 +151,20 @@ static ngx_int_t ngx_http_wasm_log_handler ( ngx_http_request_t* r ) {
 
 /* conf callbacks */
 
+static ngx_http_wasm_main_conf_t *main_conf = NULL;
+
 static void *ngx_http_wasm_create_main_conf(ngx_conf_t *cf) {
     ngx_http_wasm_main_conf_t *conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_wasm_main_conf_t));
     if (conf == NULL) {
         return NULL;
     }
     log_cf(cf, "create_main_conf", conf);
+
+    if (main_conf) {
+        d("main_conf was already non-null: %p", main_conf);
+        return NULL;
+    }
+    main_conf = conf;
 
     ngx_array_init(&conf->modules, cf->pool, 10, sizeof(loaded_module));
     ngx_array_init(&conf->instances, cf->pool, 10, sizeof(named_instance));
@@ -376,6 +385,11 @@ static ngx_int_t ngx_http_wasm_postconf ( ngx_conf_t* cf ) {
 
 ngx_int_t ngx_http_wasm_init_proc ( ngx_cycle_t* cycle ) {
     (void)cycle;
+    if (!main_conf) return NGX_OK;
+
+    ngxarray_for(i, p, &main_conf->instances, const named_instance) {
+        wngx_go_host_try_run(p->instance, &p->instance_name);
+    }
 //     ngx_log_debug(NGX_LOG_DEBUG, cycle->log, 0, "init proc");
 //     ngx_log_stderr(0, "init proc (%d > %d)", getppid(), getpid());
 

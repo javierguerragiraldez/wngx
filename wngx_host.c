@@ -101,7 +101,7 @@ static const char *dup_wasmer_error() {
 void log_wasmer_error(const char *msg) {
     const char *w_err = dup_wasmer_error();
     ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "%s: %s", msg, w_err);
-    ngx_free((void*)w_err);
+//     ngx_free((void*)w_err);
 }
 
 static uint32_t wngx_get_uri(

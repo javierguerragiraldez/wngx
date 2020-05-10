@@ -1,4 +1,5 @@
 
+#include <math.h>
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
@@ -15,6 +16,136 @@
     const wasmer_memory_t *mem_ctx = wasmer_instance_context_memory(wctx, 0);\
     (mem_ctx ? wasmer_memory_data(mem_ctx) : NULL); \
 })
+
+
+typedef int64_t gojs_v;
+
+static const int nanHead = 0x7FF80000;
+
+typedef struct {
+    unsigned char *d;
+    int64_t len;
+} gojs_s;
+
+typedef enum gojs_type {
+    gojs_type_none,
+    gojs_type_object,
+    gojs_type_string,
+    gojs_type_symbol,
+    gojs_type_function,
+} gojs_type;
+
+typedef enum js_type {
+    js_type_empty,
+    js_type_null,
+    js_type_bool,
+    js_type_float,
+    js_type_int,
+    js_type_map,
+} js_type;
+
+typedef struct js_val {
+    js_type tag;
+    union {
+        double f;
+        uint64_t i;
+        ngx_hash_t hash;
+    } as;
+} js_val;
+
+static ngx_hash_t empty_hash() {
+    ngx_hash_t e = { NULL, 0 };
+    return e;
+}
+
+
+static ngx_hash_t init_js_global(ngx_pool_t *pool) {
+    ngx_pool_t *temp_pool = ngx_create_pool(NGX_DEFAULT_POOL_SIZE, ngx_cycle->log);
+
+    ngx_hash_t js_global;
+    ngx_hash_init_t js_global_init = {
+        .hash = &js_global,
+        .key = ngx_hash_key,
+        .max_size = 512,
+        .bucket_size = ngx_align(64, ngx_cacheline_size),
+        .name = "js_global",
+        .pool = temp_pool,
+        .temp_pool = NULL,
+    };
+
+    ngx_hash_keys_arrays_t js_global_keys = {
+        .pool = pool,
+        .temp_pool = temp_pool,
+    };
+    if (ngx_hash_keys_array_init(&js_global_keys, NGX_HASH_SMALL))
+        goto fail;
+
+    {
+        ngx_str_t k;
+        js_val v;
+
+        ngx_str_set(&k, "Object");
+        v.tag = js_type_int;
+        v.as.i = 1;
+        if (ngx_hash_add_key(&js_global_keys, &k, &v, NGX_HASH_READONLY_KEY))
+            goto fail;
+
+        ngx_str_set(&k, "Array");
+        v.tag = js_type_int;
+        v.as.i = 1;
+        if (ngx_hash_add_key(&js_global_keys, &k, &v, NGX_HASH_READONLY_KEY) != NGX_OK)
+            goto fail;
+    }
+
+    if (ngx_hash_init(&js_global_init, js_global_keys.keys.elts, js_global_keys.keys.nelts) != NGX_OK)
+        goto fail;
+
+    ngx_destroy_pool(temp_pool);
+    return js_global;
+
+fail:
+    ngx_destroy_pool(temp_pool);
+    return empty_hash();
+}
+
+static ngx_array_t *init_js_values(ngx_pool_t *pool) {
+    ngx_array_t *js_values = ngx_array_create(pool, 10, sizeof(js_val));
+    if (!js_values)
+        return NULL;
+
+    js_val *vals = ngx_array_push_n(js_values, 8);
+    vals[0] = (js_val){ js_type_float, { .f = NAN }};
+    vals[1] = (js_val){ js_type_int, { .i = 0 }};
+    vals[2] = (js_val){ js_type_null, { .i = 0 }};
+    vals[3] = (js_val){ js_type_bool, { .i = 1 }};
+    vals[4] = (js_val){ js_type_bool, { .i = 0 }};
+    vals[5] = (js_val){ js_type_map, { .hash = init_js_global(pool) }};
+    vals[6] = (js_val){ js_type_map, { .hash = empty_hash() }};
+    vals[7] = (js_val){ js_type_empty, { .i = -1 }};
+
+    return js_values;
+}
+
+
+static uint64_t id2ref(uint32_t id, gojs_type type) {
+    return ((uint64_t)(nanHead | type) << 32) | id;
+}
+
+
+// static gojs_v loadValue(const uint8_t *mem, uint32_t offset) {
+//     return *(int64_t *)(mem + offset);
+// }
+
+static gojs_s loadString(const uint8_t *mem, uint32_t offset) {
+    int64_t addr = *(int64_t*)(mem + offset);
+    gojs_s str = {
+        .d = (uint8_t *)(mem + addr),
+        .len = *(int64_t *)(mem + offset + 8),
+    };
+    return str;
+}
+
+
 
 void wngx_go_debug(const wasmer_instance_context_t *wctx, uint32_t value) {
     (void)wctx;
@@ -38,6 +169,12 @@ void wngx_go_wasmWrite(const wasmer_instance_context_t *wctx, uint32_t sp) {
     int64_t fd = *(int64_t *)(mem+sp+8);
     int64_t p = *(int64_t *)(mem+sp+16);
     int32_t n = *(int32_t *)(mem+sp+24);
+
+    if (fd == 2) {
+        /* stderr => log */
+        d("go stderr: %*s", n, mem+p);
+        return;
+    }
 
     // write n bytes to file fd from buffer mem+p
     d("write %d bytes to file %d from buffer %p (%p+%d):\"%*s\"",
@@ -109,8 +246,47 @@ void wngx_go_stringVal(const wasmer_instance_context_t *wctx, uint32_t sp) {
 }
 
 void wngx_go_valueGet(const wasmer_instance_context_t *wctx, uint32_t sp) {
-    (void)wctx; (void)sp;
-    d("wngx_go_valueGet");
+    wngx_instance *inst = wasmer_instance_context_data_get(wctx);
+    if (!inst) return;
+    uint8_t *mem = wctx_mem(wctx);
+    if (!mem) return;
+
+    ngx_array_t *js_values = inst->ctx;
+    if (!js_values) {
+        inst->ctx = init_js_values(ngx_cycle->pool);
+        js_values = inst->ctx;
+    }
+    if (!js_values)
+        return;
+
+    uint64_t valId = *(uint64_t *)(mem + sp + 8);
+    if (valId >= js_values->nelts) {
+        d("invalid index: %d (nelts: %d)", valId, js_values->nelts);
+        return;
+    }
+
+    js_val *valA = &((js_val*)js_values->elts)[valId];
+    gojs_s str = loadString(mem, sp+16);
+
+    d("wngx_go_valueGet, (%d).%*s", valId, str.len, str.d);
+
+    if (valA->tag != js_type_map) {
+        d("ref value isn't a map : %d", valA->tag);
+        return;
+    }
+
+    ngx_uint_t key = ngx_hash_key(str.d, str.len);
+    js_val *valB = ngx_hash_find(&valA->as.hash, key, str.d, str.len);
+
+    // TODO: get sp again
+
+    if (!valB) {
+        d("not found");
+        *(uint64_t *)(mem + sp + 32) = id2ref(2, gojs_type_none);
+    }
+
+    // TODO: put valB in js_values, get index / type
+    *(uint64_t *)(mem + sp + 32) = id2ref(2, gojs_type_none);
 }
 
 void wngx_go_valueSet(const wasmer_instance_context_t *wctx, uint32_t sp) {
@@ -384,3 +560,18 @@ static const func_defs_t _go_func_defs[] = {
 };
 
 const func_defs_t *go_func_defs = _go_func_defs;
+
+wasmer_result_t wngx_go_host_try_run(const wngx_instance *inst, const ngx_str_t *name) {
+    (void)name;
+    wasmer_value_t params[] = {
+        { WASM_I32, { .I32 = 0 } },
+        { WASM_I32, { .I32 = 0 } },
+    };
+    wasmer_value_t results[] = {};
+
+    wasmer_result_t call_result = wasmer_instance_call(inst->w_instance, "run",
+                                                       params, sizeof_array(params),
+                                                       results, sizeof_array(results));
+    log_wasmer_error("after run");
+    return call_result;
+}

@@ -31,6 +31,7 @@ typedef struct wngx_instance {
     const wasmer_export_func_t *w_funcs[__wngx_num_export_ids__];
     ngx_http_request_t *current_req;
     wngx_registry registry;
+    void *ctx;
 } wngx_instance;
 
 
