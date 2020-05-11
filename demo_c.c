@@ -11,11 +11,11 @@ extern void wngx_add_header(const char *key, unsigned key_len, const char *val, 
 
 // void rewrite() {}
 
-void req_access () {
+void on_req_access () {
     urilen = wngx_get_uri(buff, buff_size);
 }
 
-void res_header_filter() {
+void on_res_header() {
     wngx_add_header(LIT_AND_LEN("X-C-says-help"), buff, urilen);
 }
 

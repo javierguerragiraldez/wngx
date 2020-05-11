@@ -130,10 +130,10 @@ static ngx_array_t *init_js_values(ngx_pool_t *pool) {
     vals[2] = (js_val){ js_type_null, { .i = 0 }};
     vals[3] = (js_val){ js_type_bool, { .i = 1 }};
     vals[4] = (js_val){ js_type_bool, { .i = 0 }};
-    vals[5] = (js_val){ js_type_map, { .hash = init_js_map(pool, (js_map_kv[]){
+    vals[5] = (js_val){ .tag = js_type_map, { .hash = init_js_map(pool, (js_map_kv[]){
             { ngx_string("Object"), { js_type_int, { .i = 1 }}},
             { ngx_string("Array"), { js_type_int, { .i = 1 }}},
-            { ngx_string("process"), { js_type_map, { .hash = init_js_map(pool, (js_map_kv[]){
+            { ngx_string("process"), { .tag = js_type_map, { .hash = init_js_map(pool, (js_map_kv[]){
                 { ngx_string("getuid"), { js_type_function, { .func = stub_func }}},
                 { ngx_string("getgid"), { js_type_function, { .func = stub_func }}},
                 { ngx_string("geteuid"), { js_type_function, { .func = stub_func }}},
@@ -146,10 +146,23 @@ static ngx_array_t *init_js_values(ngx_pool_t *pool) {
                 { ngx_string("chdir"), { js_type_function, { .func = stub_func }}},
                 null_kv,
             }) }}},
-            { ngx_string("fs"), { js_type_int, { .i = 1 }}},
+            { ngx_string("fs"), { .tag = js_type_map, { .hash = init_js_map(pool, (js_map_kv[]){
+                { ngx_string("constants"), { .tag = js_type_map, { .hash = init_js_map(pool, (js_map_kv[]){
+                    { ngx_string("O_WRONLY"), { js_type_int, { .i = -1 }}},
+                    { ngx_string("O_RDWR"), { js_type_int, { .i = -1 }}},
+                    { ngx_string("O_CREAT"), { js_type_int, { .i = -1 }}},
+                    { ngx_string("O_TRUNC"), { js_type_int, { .i = -1 }}},
+                    { ngx_string("O_APPEND"), { js_type_int, { .i = -1 }}},
+                    { ngx_string("O_EXCL"), { js_type_int, { .i = -1 }}},
+                    null_kv,
+                })}}},
+                { ngx_string("writeSync"), { js_type_function, { .func = stub_func }}},
+                { ngx_string("write"), { js_type_function, { .func = stub_func }}},
+                null_kv,
+            }) }}},
             null_kv,
         }) }};
-    vals[6] = (js_val){ js_type_map, { .hash = empty_hash() }};
+    vals[6] = (js_val){ .tag = js_type_map, { .hash = empty_hash() }};
     vals[7] = (js_val){ js_type_empty, { .i = -1 }};
 
     return js_values;
@@ -180,7 +193,7 @@ static void store_value(ngx_array_t *js_values, const js_val *val, uint8_t *addr
     if (!p) return;
 
     int index = p - (js_val *)js_values->elts;
-    d("store_value at index %d", index);
+    d("store_value at index %d (%p)", index, p);
     if (index < 0 || (unsigned)index >= js_values->nelts)
         return;
 
@@ -334,7 +347,7 @@ void wngx_go_valueGet(const wasmer_instance_context_t *wctx, uint32_t sp) {
     js_val *valA = &((js_val*)js_values->elts)[valId];
     gojs_s str = loadString(mem, sp+16);
 
-    d("wngx_go_valueGet, (%d).%*s", valId, str.len, str.d);
+    d("wngx_go_valueGet, (%d:%p).%*s", valId, valA, str.len, str.d);
 
     if (valA->tag != js_type_map) {
         d("ref value isn't a map : %d", valA->tag);
@@ -351,6 +364,8 @@ void wngx_go_valueGet(const wasmer_instance_context_t *wctx, uint32_t sp) {
         *(uint64_t *)(mem + sp + 32) = id2ref(2, gojs_type_none);
         return;
     }
+
+    d("found %p:%d", valB, valB->tag);
 
     store_value(js_values, valB, mem + sp + 32);
 }
