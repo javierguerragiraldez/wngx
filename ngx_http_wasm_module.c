@@ -49,15 +49,6 @@ typedef struct ngx_http_wasm_conf_t {
 
 
 
-static void log_cf(const ngx_conf_t *cf, const char *msg, const void *p) {
-    ngx_log_stderr(NGX_LOG_STDERR, "%s(%p) :: cf: %p, #args: %d, module_type: %Xd, cmd_type: %Xd",
-        msg, p, cf, cf->args->nelts,  cf->module_type, cf->cmd_type );
-
-    ngxarray_for(i, arg, cf->args, const ngx_str_t){
-        ngx_log_stderr(NGX_LOG_STDERR, "   arg #%d: %V", i, arg);
-    }
-}
-
 void maybe_call_each(const ngx_array_t *instances, wngx_export_id method, ngx_http_request_t *r) {
     ngxarray_for(i, inst, instances, const named_instance) {
         if (inst->instance != NULL) {
@@ -151,20 +142,11 @@ static ngx_int_t ngx_http_wasm_log_handler ( ngx_http_request_t* r ) {
 
 /* conf callbacks */
 
-static ngx_http_wasm_main_conf_t *main_conf = NULL;
-
 static void *ngx_http_wasm_create_main_conf(ngx_conf_t *cf) {
     ngx_http_wasm_main_conf_t *conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_wasm_main_conf_t));
     if (conf == NULL) {
         return NULL;
     }
-    log_cf(cf, "create_main_conf", conf);
-
-    if (main_conf) {
-        d("main_conf was already non-null: %p", main_conf);
-        return NULL;
-    }
-    main_conf = conf;
 
     ngx_array_init(&conf->modules, cf->pool, 10, sizeof(loaded_module));
     ngx_array_init(&conf->instances, cf->pool, 10, sizeof(named_instance));
@@ -177,7 +159,6 @@ static void *ngx_http_wasm_create_conf(ngx_conf_t *cf) {
     if (conf == NULL) {
         return NULL;
     }
-    log_cf(cf, "create_conf", conf);
 
     if (ngx_array_init(&conf->instances, cf->pool, 10, sizeof(named_instance)) != NGX_OK) {
         ngx_free(conf);
@@ -201,17 +182,12 @@ static char *ngx_http_wasm_set_loc_conf_module_file(
 ) {
     (void)cmd;
 
-    log_cf(cf, "set_loc_conf", conf);
-
     if (cf->args->nelts < 2 || cf->args->nelts > 3) {
         return "syntax: wasm_file path [name];";
     }
 
     ngx_http_wasm_conf_t *wlcf = conf;
     if (wlcf == NULL)   return "cant't find local config";
-
-    ngx_http_wasm_main_conf_t *wmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_wasm_module);
-    d("wmcf: %p", wmcf);
 
     ngx_str_t *args = cf->args->elts;
 
@@ -306,7 +282,6 @@ static void get_named_instance(named_instance *inst, ngx_array_t *instances, ngx
 static char *ngx_http_wasm_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
     (void)cf;
 
-    ngx_http_wasm_conf_t *prev = parent;
     ngx_http_wasm_main_conf_t *root = ngx_http_conf_get_module_main_conf(cf, ngx_http_wasm_module); //prev->root;
     ngx_http_wasm_conf_t *conf = child;
 
@@ -315,19 +290,12 @@ static char *ngx_http_wasm_merge_loc_conf(ngx_conf_t *cf, void *parent, void *ch
         return NGX_CONF_OK;
     }
 
-    ngx_log_stderr(NGX_LOG_STDERR, "merge - root: %p (%d/%d)  prev: %p => conf: %p (%d)",
-                   root, root->instances.nelts, root->modules.nelts, prev,
-                   conf, conf->instances.nelts);
-
-    ngxarray_for(i, inst, &conf->instances, named_instance) {
-        d("get: %V:%V", &inst->module_path, &inst->instance_name);
-        get_named_instance(inst, &root->instances, &root->modules);
+    if (!ngx_test_config) {
+        ngxarray_for(i, inst, &conf->instances, named_instance) {
+            d("get: %V:%V", &inst->module_path, &inst->instance_name);
+            get_named_instance(inst, &root->instances, &root->modules);
+        }
     }
-
-    ngxarray_for(_, inst_, &conf->instances, const named_instance) {
-        d("instance %V:%V -> %p", &inst_->module_path, &inst_->instance_name, inst_->instance);
-    }
-    d("---");
 
     return NGX_CONF_OK;
 }
@@ -367,7 +335,6 @@ static ngx_int_t ngx_http_wasm_postconf ( ngx_conf_t* cf ) {
                 || add_handler(cmcf, NGX_HTTP_LOG_PHASE, ngx_http_wasm_log_handler);
 
     if (rc != NGX_OK) {
-//         ngx_log_stderr(0, "rc %d != NGX_OK", rc);
         return rc;
     }
 
@@ -384,19 +351,13 @@ static ngx_int_t ngx_http_wasm_postconf ( ngx_conf_t* cf ) {
 /* process initialization */
 
 ngx_int_t ngx_http_wasm_init_proc ( ngx_cycle_t* cycle ) {
-    (void)cycle;
+
+    ngx_http_wasm_main_conf_t *main_conf = ngx_http_cycle_get_module_main_conf(cycle, ngx_http_wasm_module);
     if (!main_conf) return NGX_OK;
 
     ngxarray_for(i, p, &main_conf->instances, const named_instance) {
         wngx_go_host_try_run(p->instance, &p->instance_name);
     }
-//     ngx_log_debug(NGX_LOG_DEBUG, cycle->log, 0, "init proc");
-//     ngx_log_stderr(0, "init proc (%d > %d)", getppid(), getpid());
-
-//     ngx_http_wasm_main_conf_t *wmcf = ngx_http_cycle_get_module_main_conf(cycle, ngx_http_wasm_module);
-//     if (wmcf == NULL) {
-//         return NGX_ERROR;
-//     }
 
     return NGX_OK;
 }

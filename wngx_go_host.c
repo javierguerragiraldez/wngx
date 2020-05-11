@@ -42,6 +42,7 @@ typedef enum js_type {
     js_type_float,
     js_type_int,
     js_type_map,
+    js_type_function,
 } js_type;
 
 typedef struct js_val {
@@ -50,8 +51,17 @@ typedef struct js_val {
         double f;
         uint64_t i;
         ngx_hash_t hash;
+        void (*func)();
     } as;
 } js_val;
+
+
+typedef struct js_map_kv {
+    ngx_str_t key;
+    js_val val;
+} js_map_kv;
+
+#define null_kv  { ngx_null_string, { js_type_null, { .i = 0 }}}
 
 static ngx_hash_t empty_hash() {
     ngx_hash_t e = { NULL, 0 };
@@ -59,67 +69,86 @@ static ngx_hash_t empty_hash() {
 }
 
 
-static ngx_hash_t init_js_global(ngx_pool_t *pool) {
-    ngx_pool_t *temp_pool = ngx_create_pool(NGX_DEFAULT_POOL_SIZE, ngx_cycle->log);
+void stub_func() {}
 
-    ngx_hash_t js_global;
-    ngx_hash_init_t js_global_init = {
-        .hash = &js_global,
+static ngx_hash_t init_js_map(ngx_pool_t *pool, js_map_kv *data) {
+    d("init_js_map");
+    ngx_pool_t *temp_pool = ngx_create_pool(NGX_DEFAULT_POOL_SIZE, ngx_cycle->log);
+    d("temp_pool: %p", temp_pool);
+    if (!temp_pool) goto fail;
+
+    ngx_hash_t js_map;
+    ngx_hash_init_t js_map_init = {
+        .hash = &js_map,
         .key = ngx_hash_key,
         .max_size = 512,
         .bucket_size = ngx_align(64, ngx_cacheline_size),
-        .name = "js_global",
-        .pool = temp_pool,
-        .temp_pool = NULL,
-    };
-
-    ngx_hash_keys_arrays_t js_global_keys = {
+        .name = "js_map",
         .pool = pool,
         .temp_pool = temp_pool,
     };
-    if (ngx_hash_keys_array_init(&js_global_keys, NGX_HASH_SMALL))
+
+    ngx_hash_keys_arrays_t js_map_keys = {
+        .pool = pool,
+        .temp_pool = temp_pool,
+    };
+    if (ngx_hash_keys_array_init(&js_map_keys, NGX_HASH_SMALL))
         goto fail;
 
-    {
-        ngx_str_t k;
-        js_val v;
 
-        ngx_str_set(&k, "Object");
-        v.tag = js_type_int;
-        v.as.i = 1;
-        if (ngx_hash_add_key(&js_global_keys, &k, &v, NGX_HASH_READONLY_KEY))
+    js_map_kv *kv = data;
+    while (kv->key.len > 0) {
+        d("inserting key %V", &kv->key);
+        if (ngx_hash_add_key(&js_map_keys, &kv->key, &kv->val, NGX_HASH_READONLY_KEY) != NGX_OK)
             goto fail;
-
-        ngx_str_set(&k, "Array");
-        v.tag = js_type_int;
-        v.as.i = 1;
-        if (ngx_hash_add_key(&js_global_keys, &k, &v, NGX_HASH_READONLY_KEY) != NGX_OK)
-            goto fail;
+        kv++;
     }
 
-    if (ngx_hash_init(&js_global_init, js_global_keys.keys.elts, js_global_keys.keys.nelts) != NGX_OK)
+    if (ngx_hash_init(&js_map_init, js_map_keys.keys.elts, js_map_keys.keys.nelts) != NGX_OK)
         goto fail;
 
     ngx_destroy_pool(temp_pool);
-    return js_global;
+    d("js_map: %p/%ui", js_map.buckets, js_map.size);
+    return js_map;
 
 fail:
+    d("init_js_global failed");
     ngx_destroy_pool(temp_pool);
     return empty_hash();
 }
 
 static ngx_array_t *init_js_values(ngx_pool_t *pool) {
+    d("init_js_values");
     ngx_array_t *js_values = ngx_array_create(pool, 10, sizeof(js_val));
     if (!js_values)
         return NULL;
 
     js_val *vals = ngx_array_push_n(js_values, 8);
+    d("vals: %p", vals);
     vals[0] = (js_val){ js_type_float, { .f = NAN }};
     vals[1] = (js_val){ js_type_int, { .i = 0 }};
     vals[2] = (js_val){ js_type_null, { .i = 0 }};
     vals[3] = (js_val){ js_type_bool, { .i = 1 }};
     vals[4] = (js_val){ js_type_bool, { .i = 0 }};
-    vals[5] = (js_val){ js_type_map, { .hash = init_js_global(pool) }};
+    vals[5] = (js_val){ js_type_map, { .hash = init_js_map(pool, (js_map_kv[]){
+            { ngx_string("Object"), { js_type_int, { .i = 1 }}},
+            { ngx_string("Array"), { js_type_int, { .i = 1 }}},
+            { ngx_string("process"), { js_type_map, { .hash = init_js_map(pool, (js_map_kv[]){
+                { ngx_string("getuid"), { js_type_function, { .func = stub_func }}},
+                { ngx_string("getgid"), { js_type_function, { .func = stub_func }}},
+                { ngx_string("geteuid"), { js_type_function, { .func = stub_func }}},
+                { ngx_string("getegid"), { js_type_function, { .func = stub_func }}},
+                { ngx_string("getgroups"), { js_type_function, { .func = stub_func }}},
+                { ngx_string("pid"), { js_type_int, { .i = -1 }}},
+                { ngx_string("ppid"), { js_type_int, { .i = -1 }}},
+                { ngx_string("umask"), { js_type_function, { .func = stub_func }}},
+                { ngx_string("cmd"), { js_type_function, { .func = stub_func }}},
+                { ngx_string("chdir"), { js_type_function, { .func = stub_func }}},
+                null_kv,
+            }) }}},
+            { ngx_string("fs"), { js_type_int, { .i = 1 }}},
+            null_kv,
+        }) }};
     vals[6] = (js_val){ js_type_map, { .hash = empty_hash() }};
     vals[7] = (js_val){ js_type_empty, { .i = -1 }};
 
@@ -145,6 +174,36 @@ static gojs_s loadString(const uint8_t *mem, uint32_t offset) {
     return str;
 }
 
+
+static void store_value(ngx_array_t *js_values, const js_val *val, uint8_t *addr) {
+    js_val *p = ngx_array_push(js_values);
+    if (!p) return;
+
+    int index = p - (js_val *)js_values->elts;
+    d("store_value at index %d", index);
+    if (index < 0 || (unsigned)index >= js_values->nelts)
+        return;
+
+    gojs_type type;
+
+    switch(val->tag) {
+        case js_type_empty:
+        case js_type_null:
+            type = gojs_type_none;
+            break;
+
+        case js_type_function:
+            type = gojs_type_function;
+            break;
+
+        default:
+            type = gojs_type_object;
+            break;
+    }
+
+    *p = *val;
+    *(uint64_t *)addr = id2ref(index, type);
+}
 
 
 void wngx_go_debug(const wasmer_instance_context_t *wctx, uint32_t value) {
@@ -246,8 +305,10 @@ void wngx_go_stringVal(const wasmer_instance_context_t *wctx, uint32_t sp) {
 }
 
 void wngx_go_valueGet(const wasmer_instance_context_t *wctx, uint32_t sp) {
+    d("wngx_go_valueGet");
     wngx_instance *inst = wasmer_instance_context_data_get(wctx);
     if (!inst) return;
+
     uint8_t *mem = wctx_mem(wctx);
     if (!mem) return;
 
@@ -259,9 +320,14 @@ void wngx_go_valueGet(const wasmer_instance_context_t *wctx, uint32_t sp) {
     if (!js_values)
         return;
 
-    uint64_t valId = *(uint64_t *)(mem + sp + 8);
+    double f = *(double *)(mem + sp + 8);
+    if (!isnan(f)) {
+        d("got number %g", f);
+    }
+
+    ngx_uid_t valId = *(uint32_t *)(mem + sp + 8);
     if (valId >= js_values->nelts) {
-        d("invalid index: %d (nelts: %d)", valId, js_values->nelts);
+        d("invalid index: %ui (nelts: %ui)", valId, js_values->nelts);
         return;
     }
 
@@ -283,10 +349,10 @@ void wngx_go_valueGet(const wasmer_instance_context_t *wctx, uint32_t sp) {
     if (!valB) {
         d("not found");
         *(uint64_t *)(mem + sp + 32) = id2ref(2, gojs_type_none);
+        return;
     }
 
-    // TODO: put valB in js_values, get index / type
-    *(uint64_t *)(mem + sp + 32) = id2ref(2, gojs_type_none);
+    store_value(js_values, valB, mem + sp + 32);
 }
 
 void wngx_go_valueSet(const wasmer_instance_context_t *wctx, uint32_t sp) {
