@@ -46,7 +46,7 @@ $(NGX_INST): $(NGX_EXE)
 
 
 
-modules: demo_c.wasm demo_req.wasm async_c.wasm demo_go.wasm
+modules: demo_c.wasm demo_req.wasm async_c.wasm demo_go.wasm async_cpp.wasm
 
 WASM_CC = /opt/wasi-sdk/bin/clang
 WASM_CFLAGS = \
@@ -56,9 +56,21 @@ WASM_CFLAGS = \
 	-Wl,--no-entry \
 	-Wl,--export-all
 
+WASM_CPP = /opt/wasi-sdk/bin/clang++
+WASM_CPPFLAGS = \
+	-std=c++17 \
+	-nostartfiles \
+	-fno-exceptions \
+	-Wl,--allow-undefined \
+	-Wl,--no-entry \
+	-Wl,--export-all
+
 
 %.wasm: %.c
 	$(WASM_CC) $(WASM_CFLAGS) -o $@ $<
+
+%.wasm: %.cpp
+	$(WASM_CPP) $(WASM_CPPFLAGS) -o $@ $<
 
 %.wasm: %.zig wngx.zig
 	zig build-lib -target wasm32-freestanding $<

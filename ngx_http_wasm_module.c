@@ -10,6 +10,7 @@
 #include <ngx_http.h>
 #include <ngx_string.h>
 
+#define WASMER_WASI_ENABLED
 #include "wasmer.h"
 
 #include "utils.h"

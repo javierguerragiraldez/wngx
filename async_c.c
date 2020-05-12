@@ -25,7 +25,7 @@ void on_content(void) {
     log_k("content!");
 
     wngx_subrequest_params params = {
-        .callback = after_subreq,
+        .callback = (wngx_func_ptr)after_subreq,
         .uri = wngx_lit_str("http://example.com"),
         .args = wngx_lit_str(""),
     };

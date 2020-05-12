@@ -19,7 +19,7 @@ static const unsigned ptrsize = sizeof(void*);
 
 typedef void *wngx_ptr;
 typedef char *char_ptr;
-typedef void (*wngx_func_ptr)();
+typedef void (*wngx_func_ptr)(void *);
 
 #else
 

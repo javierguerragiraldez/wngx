@@ -3,6 +3,7 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 
+#define WASMER_WASI_ENABLED
 #include "wasmer.h"
 
 #include "utils.h"
@@ -303,11 +304,11 @@ static size_t add_imports(wasmer_import_t *imps, size_t n, wasmer_byte_array mod
     return p - imps;
 }
 
-static wasmer_import_t *init_imports(size_t *n_imps) {
+static wasmer_import_object_t *init_imports() {
     d("init_imports");
     size_t num_imports = count_defs(func_defs) + count_defs(go_func_defs);
     d("num_imports: %d", num_imports);
-    if (n_imps) *n_imps = num_imports;
+//     if (n_imps) *n_imps = num_imports;
 
     wasmer_import_t *p = ngx_calloc(sizeof(wasmer_import_t) * num_imports, ngx_cycle->log);
     if (!p) {
@@ -323,7 +324,19 @@ static wasmer_import_t *init_imports(size_t *n_imps) {
     n = add_imports(p, n, go_modname, go_func_defs);
     d("n: %d", n);
 
-    return p;
+    wasmer_import_object_t *imp_obj = wasmer_wasi_generate_import_object_for_version(
+        Snapshot0, NULL, 0, NULL, 0, NULL, 0, NULL, 0);
+    if (!imp_obj) {
+        ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "can't allocate import object");
+        return NULL;
+    }
+
+    if (wasmer_import_object_extend( imp_obj, p, n) != WASMER_OK) {
+        ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0, "can't extend import object");
+        return NULL;
+    }
+
+    return imp_obj;
 }
 
 /* functions used by other C files */
@@ -421,10 +434,10 @@ wngx_module * wngx_host_load_module(const ngx_str_t* path) {
 }
 
 wngx_instance * wngx_host_load_instance(const wngx_module* mod) {
-    static wasmer_import_t *imports = NULL;
-    static size_t num_imports;
+    static wasmer_import_object_t *imports = NULL;
+//     static size_t num_imports;
     if (!imports)
-        imports = init_imports(&num_imports);
+        imports = init_imports();
 
     wngx_instance *inst = ngx_pcalloc(ngx_cycle->pool, sizeof(wngx_instance));
     if (inst == NULL) {
@@ -437,8 +450,8 @@ wngx_instance * wngx_host_load_instance(const wngx_module* mod) {
         return NULL;
     }
 
-    wasmer_result_t instantiate_result = wasmer_module_instantiate(
-        mod->w_module, &inst->w_instance, imports, num_imports);
+    wasmer_result_t instantiate_result = wasmer_module_import_instantiate(
+        &inst->w_instance, mod->w_module, imports);
     if (instantiate_result != WASMER_OK) {
         ngx_log_abort(0, "can't create instance");
         log_wasmer_error("instantiating WASM module");
@@ -485,6 +498,7 @@ wasmer_result_t maybe_call(wngx_instance* inst, wngx_export_id method) {
 
 
 wasmer_result_t wngx_host_call_back ( wngx_instance* inst, uint32_t data ) {
+    d("wngx_host_call_back: %Xd", data);
     wasmer_value_t params[] = {
         { WASM_I32, { .I32 = data } },
     };
