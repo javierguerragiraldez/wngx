@@ -348,7 +348,7 @@ static const char *kindname(wasmer_import_export_kind kind) {
             (kind == WASM_TABLE) ? "table" : "-?-";
 }
 
-static void show_imp_exp(wasmer_module_t *mod) {
+static void show_imp_exp(const wasmer_module_t *mod) {
     {
         wasmer_export_descriptors_t *mod_exports;
         wasmer_export_descriptors(mod, &mod_exports);
@@ -379,9 +379,40 @@ static void show_imp_exp(wasmer_module_t *mod) {
     }
 }
 
+struct {
+    wasmer_byte_array name;
+    ApiExpected api;
+} api_discriminators[] = {
+    { LIT_BYTEARRAY("fd_close"), ExpectApiWasi },
+    { LIT_BYTEARRAY("syscall/js.copyBytesToGo"), ExpectApiGo },
+    { LIT_BYTEARRAY("syscall/js.copyBytesToJS"), ExpectApiGo },
+};
+
+static ApiExpected which_apis_expect_module(const wasmer_module_t *mod) {
+    wasmer_import_descriptors_t *mod_imports;
+    wasmer_import_descriptors(mod, &mod_imports);
+
+    ApiExpected which_apis = ExpectApiNone;
+    unsigned int i;
+    for(i = wasmer_import_descriptors_len(mod_imports); i > 0; i--) {
+        wasmer_import_descriptor_t *desc = wasmer_import_descriptors_get(mod_imports, i - 1);
+        wasmer_byte_array impname = wasmer_import_descriptor_name(desc);
+
+        unsigned int j;
+        for (j = 0; j < sizeof_array(api_discriminators); j++)
+            if (bytearray_eq(&impname, &api_discriminators[j].name))
+                which_apis |= api_discriminators[j].api;
+    }
+    return which_apis;
+}
+
 wngx_module * wngx_host_load_module(const ngx_str_t* path) {
-    ngx_log_stderr(NGX_LOG_STDERR, "wngx_host_load_module %V", path);
-    ngx_log_stderr(NGX_LOG_STDERR, "as C string: '%s'", path->data);
+    d("wngx_host_load_module %V", path);
+    if (path->data[path->len] != '\0') {
+        d("non zero terminated path: %V : %s", path, path->data);
+        return NULL;
+    }
+//     ngx_log_stderr(NGX_LOG_STDERR, "as C string: '%s'", path->data);
     wngx_module *mod = ngx_pcalloc(ngx_cycle->pool, sizeof(wngx_module));
     if (mod == NULL) {
         ngx_log_abort(0, "can't alloc module");
@@ -405,6 +436,7 @@ wngx_module * wngx_host_load_module(const ngx_str_t* path) {
     }
 
     show_imp_exp(mod->w_module);
+    mod->apis_expected = which_apis_expect_module(mod->w_module);
 
     {
         /* record export index of the funcs we need */
@@ -435,7 +467,6 @@ wngx_module * wngx_host_load_module(const ngx_str_t* path) {
 
 wngx_instance * wngx_host_load_instance(const wngx_module* mod) {
     static wasmer_import_object_t *imports = NULL;
-//     static size_t num_imports;
     if (!imports)
         imports = init_imports();
 
@@ -444,6 +475,8 @@ wngx_instance * wngx_host_load_instance(const wngx_module* mod) {
         ngx_log_abort(0, "can't alloc instance");
         return NULL;
     }
+
+    inst->module = mod;
 
     if (initialize_registry(&inst->registry, ngx_cycle->pool) != NGX_OK) {
         ngx_log_abort(0, "can't inialize registry");
