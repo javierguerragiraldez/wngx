@@ -4,6 +4,7 @@ ngx_module_srcs=" \
         $ngx_addon_dir/ngx_http_wasm_module.c \
         $ngx_addon_dir/wngx_host.c \
         $ngx_addon_dir/wngx_go_host.c \
+        $ngx_addon_dir/gojs_values.c \
         $ngx_addon_dir/utils.c \
     "
 ngx_module_libs="-lwasmer"

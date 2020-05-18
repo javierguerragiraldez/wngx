@@ -19,6 +19,7 @@ HEADERS= \
 	wngx_structs.h \
 	wngx_host.h \
 	wngx_go_host.h \
+	gojs_values.c \
 	utils.h
 
 
@@ -48,8 +49,11 @@ $(NGX_INST): $(NGX_EXE)
 
 modules: demo_c.wasm demo_req.wasm async_c.wasm demo_go.wasm async_cpp.wasm
 
+-include *.d
+
 WASM_CC = /opt/wasi-sdk/bin/clang
-WASM_CFLAGS = \
+WASM_CFLAGS = -MMD \
+	-std=gnu2x \
 	--target=wasm32-unknown-wasi \
 	-nostartfiles \
 	-Wl,--allow-undefined \
@@ -57,7 +61,7 @@ WASM_CFLAGS = \
 	-Wl,--export-all
 
 WASM_CPP = /opt/wasi-sdk/bin/clang++
-WASM_CPPFLAGS = \
+WASM_CPPFLAGS = -MMD \
 	-std=c++17 \
 	-nostartfiles \
 	-fno-exceptions \
