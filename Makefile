@@ -63,7 +63,7 @@ WASM_CPPFLAGS = \
 	-fno-exceptions \
 	-Wl,--allow-undefined \
 	-Wl,--no-entry \
-	-Wl,--export-all
+	-Wl,--export-dynamic
 
 
 %.wasm: %.c

@@ -356,9 +356,11 @@ ngx_int_t ngx_http_wasm_init_proc ( ngx_cycle_t* cycle ) {
     ngx_http_wasm_main_conf_t *main_conf = ngx_http_cycle_get_module_main_conf(cycle, ngx_http_wasm_module);
     if (!main_conf) return NGX_OK;
 
-//     ngxarray_for(i, p, &main_conf->instances, const named_instance) {
-//         wngx_go_host_try_run(p->instance, &p->instance_name);
-//     }
+    ngxarray_for(i, p, &main_conf->instances, const named_instance) {
+        if (p->instance->module->apis_expected | ExpectApiGo) {
+            wngx_go_host_try_run(p->instance, &p->instance_name);
+        }
+    }
 
     return NGX_OK;
 }

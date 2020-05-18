@@ -18,10 +18,16 @@ typedef enum wngx_export_id {
     __wngx_num_export_ids__,
 } wngx_export_id;
 
-/* TODO: maybe add module & instance names */
+
+typedef enum ApiExpected {
+    ExpectApiNone = 0x00,
+    ExpectApiWasi = 0x01,
+    ExpectApiGo = 0x02,
+} ApiExpected;
 
 typedef struct wngx_module {
     wasmer_module_t *w_module;
+    ApiExpected apis_expected;
     int export_index[__wngx_num_export_ids__];
 } wngx_module;
 
@@ -29,6 +35,7 @@ typedef struct wngx_instance {
     wasmer_instance_t *w_instance;
     wasmer_exports_t *w_exports;
     const wasmer_export_func_t *w_funcs[__wngx_num_export_ids__];
+    const wngx_module *module;
     ngx_http_request_t *current_req;
     wngx_registry registry;
     void *ctx;
