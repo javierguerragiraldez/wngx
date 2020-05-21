@@ -75,7 +75,7 @@ struct js_val_slice {
     js_val d[10];
 };
 
-#define null_node  { .key={.d=NULL, .len=0}, .val={ js_type_null, { .i = 0 }}}
+#define null_jskv  { .key={.d=NULL, .len=0}, .val={ js_type_null }}
 
 js_map *gojs_new_map(const js_kv data[]);
 js_val *gojs_map_get(const js_map *map, const gojs_s key);
@@ -89,5 +89,7 @@ const struct js_val_slice *loadSliceOfValues( const ngx_array_t *js_values,
 
 void store_value(ngx_array_t *js_values, js_val val, uint8_t *addr);
 js_val make_err(const char *msg);
+
+struct js_uint8array loadSlice (uint8_t *mem);
 
 #endif

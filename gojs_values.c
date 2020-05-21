@@ -104,16 +104,16 @@ gojs_s loadString(const uint8_t *mem, uint32_t offset) {
 }
 
 js_val loadValue(const ngx_array_t *js_values, uint8_t *addr) {
-    d("loadValue");
     double f = *(double *)addr;
-    d("f: %f", f);
+
     if (f == 0.0) return (js_val){ .tag = js_type_empty };
-    if (!isnan(f)) return (js_val){ .tag = js_type_float, {.f = f}};
+    if (!isnan(f)) return (js_val){ .tag = js_type_float, .as.f = f};
+
     unsigned int id = *(uint32_t*)addr;
-    d("id: %ud", id);
+    d("loadValue[%ud]", id);
     if (id < js_values->nelts)
         return ((js_val*)js_values->elts)[id];
-    d("out of bounds [0,%d)", js_values->nelts);
+
     return (js_val){.tag = js_type_empty};
 }
 
@@ -130,7 +130,7 @@ const struct js_val_slice *loadSliceOfValues(
         d("slice too big!");
         return NULL;
     }
-    d("loadSliceOfValues: %d, len: %d", array, len);
+    d("loadSliceOfValues: len: %d", len);
     _slice.n = len;
     for (unsigned i = 0; i < len; i++) {
         d("[%d]: %p", i, array + i + mem);
@@ -199,5 +199,16 @@ js_val make_err(const char *msg) {
     return (js_val){
         .tag = js_type_str,
         .as.str = { .d = (unsigned char*)msg, .len = strlen(msg) },
+    };
+}
+
+struct js_uint8array loadSlice(uint8_t *mem) {
+    uint64_t array = *(uint64_t *)(mem + 0);
+    uint64_t len = *(uint64_t *)(mem + 8);
+
+    return (struct js_uint8array){
+        .d = mem + array,
+        .offset = 0,
+        .length = len,
     };
 }
